@@ -6,6 +6,13 @@ export const maxDuration = 60
 
 export async function GET() {
   const supabase = await createClient()
+
+  // Reset previous "Not found" entries so they get retried
+  await supabase
+    .from('companies')
+    .update({ owners_name: null })
+    .eq('owners_name', 'Not found')
+
   const { count } = await supabase
     .from('companies')
     .select('id', { count: 'exact', head: true })
@@ -84,12 +91,11 @@ export async function POST() {
       remaining: remaining ?? 0,
     })
   } catch (err) {
-    console.error('Enrich failed:', company.company_name, err)
-    return NextResponse.json({
-      company: company.company_name,
-      owner: null,
-      error: 'API call failed',
-      remaining: -1,
-    })
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error('Enrich failed:', company.company_name, msg)
+    return NextResponse.json(
+      { error: `Claude API failed for ${company.company_name}: ${msg}` },
+      { status: 502 }
+    )
   }
 }

@@ -31,12 +31,19 @@ export function EnrichOwnersButton() {
         const res = await fetch('/api/enrich-owners', { method: 'POST' })
         const data = await res.json()
 
-        if (data.done || data.remaining === 0) {
+        if (!res.ok) {
+          toast.error(`Error: ${data.error || res.statusText}`)
+          errors++
+          continue
+        }
+
+        if (data.done || (typeof data.remaining === 'number' && data.remaining === 0)) {
           remaining = 0
           break
         }
 
-        if (data.error && data.remaining === -1) {
+        if (typeof data.remaining !== 'number') {
+          toast.error('Unexpected response from server')
           errors++
           continue
         }
@@ -45,20 +52,28 @@ export function EnrichOwnersButton() {
         remaining = data.remaining
         setMissing(remaining)
         setChecked(c => c + 1)
-        setCurrent(data.company)
+        setCurrent(data.company || '')
 
         if (data.owner) {
           setFound(f => f + 1)
           toast.success(`${data.company} → ${data.owner}`, { duration: 3000 })
+        } else {
+          toast(`${data.company} → not found`, { duration: 2000 })
         }
-      } catch {
+      } catch (err) {
+        toast.error(`Network error: ${err}`)
         errors++
       }
     }
 
+    if (errors >= 3) {
+      toast.error('Stopped after 3 consecutive errors. Check that ANTHROPIC_API_KEY is set in Vercel environment variables.')
+    } else {
+      toast.success('Owner search complete', { duration: 5000 })
+    }
+
     setRunning(false)
     setCurrent('')
-    toast.success('Owner search complete', { duration: 5000 })
   }
 
   if (missing === null) return null
