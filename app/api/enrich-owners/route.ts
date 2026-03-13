@@ -47,9 +47,13 @@ export async function POST() {
     const anthropic = new Anthropic({ apiKey })
 
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 128,
-      tools: [{ type: 'web_search_20250305' as const, name: 'web_search' }],
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 64,
+      tools: [{
+        type: 'web_search_20250305' as const,
+        name: 'web_search',
+        max_uses: 2,
+      }],
       messages: [{
         role: 'user',
         content: `who is the owner of ${company.company_name}${location}? Reply with ONLY the full name.`,
