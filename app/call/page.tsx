@@ -5,8 +5,9 @@ import type { Company } from '@/types'
 async function fetchQueue(): Promise<Company[]> {
   const supabase = await createClient()
 
-  // Fetch "Not called" first (sorted by reviews), then the rest
-  const [notCalled, rest] = await Promise.all([
+  // 1. "Not called" — sorted by google reviews desc
+  // 2. Everyone else (already contacted) — sorted by last_reach_out asc (oldest first)
+  const [notCalled, previouslyContacted] = await Promise.all([
     supabase
       .from('companies')
       .select('*')
@@ -15,13 +16,15 @@ async function fetchQueue(): Promise<Company[]> {
     supabase
       .from('companies')
       .select('*')
-      .in('reach_out_response', ['Call back on Monday', 'Left a message to the owner', 'Did not pick up', 'Did not reach the Owner'])
-      .order('google_reviews', { ascending: false, nullsFirst: false }),
+      .not('reach_out_response', 'eq', 'Not called')
+      .not('reach_out_response', 'is', null)
+      .not('reach_out_response', 'in', '("Owner is not interested","Intro-meeting wanted")')
+      .order('last_reach_out', { ascending: true, nullsFirst: true }),
   ])
 
   return [
     ...((notCalled.data as Company[]) ?? []),
-    ...((rest.data as Company[]) ?? []),
+    ...((previouslyContacted.data as Company[]) ?? []),
   ]
 }
 
