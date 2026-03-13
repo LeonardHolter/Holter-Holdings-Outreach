@@ -25,15 +25,26 @@ export function EnrichOwnersButton() {
 
     let remaining = missing ?? 0
     let errors = 0
+    const delay = (ms: number) => new Promise(r => setTimeout(r, ms))
 
-    while (remaining > 0 && errors < 3) {
+    while (remaining > 0 && errors < 5) {
       try {
         const res = await fetch('/api/enrich-owners', { method: 'POST' })
         const data = await res.json()
 
+        // Rate limited — back off and retry
+        if (res.status === 429 || res.status === 529) {
+          const wait = Math.min(15000, 3000 * (errors + 1))
+          toast.warning(`Rate limited — waiting ${Math.round(wait / 1000)}s…`)
+          errors++
+          await delay(wait)
+          continue
+        }
+
         if (!res.ok) {
           toast.error(`Error: ${data.error || res.statusText}`)
           errors++
+          await delay(2000)
           continue
         }
 
@@ -45,6 +56,7 @@ export function EnrichOwnersButton() {
         if (typeof data.remaining !== 'number') {
           toast.error('Unexpected response from server')
           errors++
+          await delay(2000)
           continue
         }
 
@@ -60,14 +72,18 @@ export function EnrichOwnersButton() {
         } else {
           toast(`${data.company} → not found`, { duration: 2000 })
         }
+
+        // Pace requests: ~2s between each to stay well under 50 req/min
+        await delay(2000)
       } catch (err) {
         toast.error(`Network error: ${err}`)
         errors++
+        await delay(3000)
       }
     }
 
-    if (errors >= 3) {
-      toast.error('Stopped after 3 consecutive errors. Check that ANTHROPIC_API_KEY is set in Vercel environment variables.')
+    if (errors >= 5) {
+      toast.error('Stopped after repeated errors. Check that ANTHROPIC_API_KEY is set in Vercel.')
     } else {
       toast.success('Owner search complete', { duration: 5000 })
     }

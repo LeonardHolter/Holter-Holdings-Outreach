@@ -93,9 +93,12 @@ export async function POST() {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     console.error('Enrich failed:', company.company_name, msg)
+
+    // Forward rate limit errors so the client can back off
+    const isRateLimit = msg.includes('rate') || msg.includes('429') || msg.includes('529')
     return NextResponse.json(
-      { error: `Claude API failed for ${company.company_name}: ${msg}` },
-      { status: 502 }
+      { error: `${company.company_name}: ${msg}` },
+      { status: isRateLimit ? 429 : 502 }
     )
   }
 }
