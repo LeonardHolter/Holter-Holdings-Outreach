@@ -34,7 +34,7 @@ export function EnrichOwnersButton() {
 
         // Rate limited — back off and retry
         if (res.status === 429 || res.status === 529) {
-          const wait = Math.min(60000, 15000 * (errors + 1))
+          const wait = Math.min(15000, 3000 * (errors + 1))
           toast.warning(`Rate limited — waiting ${Math.round(wait / 1000)}s…`)
           errors++
           await delay(wait)
@@ -73,8 +73,8 @@ export function EnrichOwnersButton() {
           toast(`${data.company} → not found`, { duration: 2000 })
         }
 
-        // Web search uses lots of input tokens — space out to stay under token limits
-        await delay(8000)
+        // Pace requests: ~2s between each to stay well under 50 req/min
+        await delay(2000)
       } catch (err) {
         toast.error(`Network error: ${err}`)
         errors++
