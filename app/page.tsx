@@ -5,7 +5,6 @@ import { createClient } from '@/lib/supabase/server'
 import { CompanyTable } from '@/components/CompanyTable'
 import { FilterBar } from '@/components/FilterBar'
 import { StatsPanel } from '@/components/StatsPanel'
-import { EnrichOwnersButton } from '@/components/EnrichOwnersButton'
 import type { Company, CompanyFilters } from '@/types'
 
 interface PageProps {
@@ -108,10 +107,7 @@ export default async function HomePage({ searchParams }: PageProps) {
             </a>
           </nav>
         </div>
-        <div className="flex items-center gap-2">
-          <EnrichOwnersButton />
-          <SignOutButton />
-        </div>
+        <SignOutButton />
       </header>
 
       {/* Filter bar */}
