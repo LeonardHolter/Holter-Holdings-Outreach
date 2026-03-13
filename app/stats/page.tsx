@@ -44,12 +44,28 @@ export default async function StatsPage() {
 
   // Who Called breakdown (from who_called field)
   const whoCalledMap: Record<string, number> = {}
+  const introByCallerMap: Record<string, number> = {}
   companies.forEach(c => {
     if (c.who_called) {
       whoCalledMap[c.who_called] = (whoCalledMap[c.who_called] ?? 0) + 1
+      if (c.reach_out_response === 'Intro-meeting wanted') {
+        introByCallerMap[c.who_called] = (introByCallerMap[c.who_called] ?? 0) + 1
+      }
     }
   })
   const whoCalledEntries = Object.entries(whoCalledMap).sort((a, b) => b[1] - a[1])
+
+  // Leaderboard data
+  const leaderboardCalls = [...callers].sort((a, b) => b.calls - a.calls).filter(c => c.calls > 0)
+  const leaderboardIntroRate = Object.entries(whoCalledMap)
+    .filter(([, count]) => count >= 3)
+    .map(([name, callCount]) => ({
+      name,
+      calls: callCount,
+      intros: introByCallerMap[name] ?? 0,
+      rate: ((introByCallerMap[name] ?? 0) / callCount) * 100,
+    }))
+    .sort((a, b) => b.rate - a.rate)
 
   // State breakdown
   const stateMap: Record<string, { total: number; called: number; intro: number }> = {}
@@ -114,6 +130,72 @@ export default async function StatsPage() {
           <KPI label="Intro Meetings" value={introMeetings.toString()} color="text-green-400" sub={`${introRate}% of called`} />
           <KPI label="Not Interested" value={notInterested.toString()} color="text-red-400" />
           <KPI label="Total Dialed" value={totalDialed.toLocaleString()} color="text-blue-400" />
+        </div>
+
+        {/* Leaderboard */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+          {/* Most Calls */}
+          <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+            <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wide mb-4 flex items-center gap-2">
+              <span>📞</span> Most Calls
+            </h2>
+            <div className="space-y-2">
+              {leaderboardCalls.slice(0, 5).map((c, i) => (
+                <div key={c.name} className="flex items-center gap-3">
+                  <span className="text-lg w-7 text-center shrink-0">
+                    {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : <span className="text-sm text-gray-600 font-bold">#{i + 1}</span>}
+                  </span>
+                  <span className="flex-1 text-sm font-medium text-white">{c.name}</span>
+                  <div className="flex items-center gap-2">
+                    <div className="w-24 bg-gray-800 rounded-full h-1.5 overflow-hidden">
+                      <div
+                        className={`h-1.5 rounded-full ${c.color} transition-all`}
+                        style={{ width: `${(c.calls / (leaderboardCalls[0]?.calls || 1)) * 100}%` }}
+                      />
+                    </div>
+                    <span className="text-sm font-bold tabular-nums text-white w-8 text-right">{c.calls}</span>
+                  </div>
+                </div>
+              ))}
+              {leaderboardCalls.length === 0 && (
+                <p className="text-gray-600 text-sm">No calls logged yet</p>
+              )}
+            </div>
+          </div>
+
+          {/* Highest Intro Rate */}
+          <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+            <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wide mb-4 flex items-center gap-2">
+              <span>🤝</span> Highest Intro Rate
+            </h2>
+            <div className="space-y-2">
+              {leaderboardIntroRate.slice(0, 5).map((c, i) => (
+                <div key={c.name} className="flex items-center gap-3">
+                  <span className="text-lg w-7 text-center shrink-0">
+                    {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : <span className="text-sm text-gray-600 font-bold">#{i + 1}</span>}
+                  </span>
+                  <span className="flex-1 text-sm font-medium text-white">{c.name}</span>
+                  <div className="flex items-center gap-2">
+                    <div className="w-24 bg-gray-800 rounded-full h-1.5 overflow-hidden">
+                      <div
+                        className="h-1.5 rounded-full bg-green-500 transition-all"
+                        style={{ width: `${(c.rate / (leaderboardIntroRate[0]?.rate || 1)) * 100}%` }}
+                      />
+                    </div>
+                    <span className="text-sm font-bold tabular-nums text-green-400 w-16 text-right">
+                      {c.rate.toFixed(1)}%
+                      <span className="text-gray-600 font-normal text-xs ml-1">({c.intros}/{c.calls})</span>
+                    </span>
+                  </div>
+                </div>
+              ))}
+              {leaderboardIntroRate.length === 0 && (
+                <p className="text-gray-600 text-sm">Need at least 3 calls per person</p>
+              )}
+            </div>
+          </div>
+
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
