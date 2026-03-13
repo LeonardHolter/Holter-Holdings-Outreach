@@ -6,7 +6,9 @@ import { toast } from 'sonner'
 export function EnrichOwnersButton() {
   const [missing, setMissing] = useState<number | null>(null)
   const [running, setRunning] = useState(false)
-  const [progress, setProgress] = useState<{ found: number; processed: number } | null>(null)
+  const [found, setFound] = useState(0)
+  const [checked, setChecked] = useState(0)
+  const [current, setCurrent] = useState('')
 
   useEffect(() => {
     fetch('/api/enrich-owners')
@@ -15,58 +17,48 @@ export function EnrichOwnersButton() {
       .catch(() => null)
   }, [])
 
-  async function handleEnrich() {
+  async function run() {
     if (running) return
     setRunning(true)
-    setProgress({ found: 0, processed: 0 })
+    setFound(0)
+    setChecked(0)
 
-    let totalFound = 0
-    let totalProcessed = 0
-    let remaining = missing ?? 999
-    let consecutiveErrors = 0
+    let remaining = missing ?? 0
+    let errors = 0
 
-    const toastId = toast.loading(`Searching for owners… (${remaining} to go)`)
+    while (remaining > 0 && errors < 3) {
+      try {
+        const res = await fetch('/api/enrich-owners', { method: 'POST' })
+        const data = await res.json()
 
-    try {
-      while (remaining > 0 && consecutiveErrors < 3) {
-        // Fire 3 parallel requests at a time for speed
-        const batch = await Promise.all([
-          fetch('/api/enrich-owners', { method: 'POST' }).then(r => r.json()).catch(() => null),
-          fetch('/api/enrich-owners', { method: 'POST' }).then(r => r.json()).catch(() => null),
-          fetch('/api/enrich-owners', { method: 'POST' }).then(r => r.json()).catch(() => null),
-        ])
-
-        let anySuccess = false
-        for (const data of batch) {
-          if (!data || data.error) { consecutiveErrors++; continue }
-          if (data.processed === 0) { remaining = 0; break }
-          consecutiveErrors = 0
-          anySuccess = true
-          totalFound += data.found
-          totalProcessed += data.processed
-          remaining = data.remaining
+        if (data.done || data.remaining === 0) {
+          remaining = 0
+          break
         }
 
-        if (!anySuccess) break
+        if (data.error && data.remaining === -1) {
+          errors++
+          continue
+        }
 
-        setProgress({ found: totalFound, processed: totalProcessed })
+        errors = 0
+        remaining = data.remaining
         setMissing(remaining)
-        toast.loading(
-          `Searching… ${totalProcessed} checked, ${totalFound} found (${remaining} left)`,
-          { id: toastId }
-        )
-      }
+        setChecked(c => c + 1)
+        setCurrent(data.company)
 
-      toast.success(
-        `Done! Found ${totalFound} owner${totalFound !== 1 ? 's' : ''} out of ${totalProcessed} companies searched.`,
-        { id: toastId, duration: 6000 }
-      )
-    } catch {
-      toast.error('Something went wrong during enrichment', { id: toastId })
-    } finally {
-      setRunning(false)
-      setProgress(null)
+        if (data.owner) {
+          setFound(f => f + 1)
+          toast.success(`${data.company} → ${data.owner}`, { duration: 3000 })
+        }
+      } catch {
+        errors++
+      }
     }
+
+    setRunning(false)
+    setCurrent('')
+    toast.success('Owner search complete', { duration: 5000 })
   }
 
   if (missing === null) return null
@@ -74,14 +66,13 @@ export function EnrichOwnersButton() {
 
   return (
     <button
-      onClick={handleEnrich}
+      onClick={run}
       disabled={running}
       className={`flex items-center gap-2 text-xs px-3 py-1.5 rounded-lg border transition-colors ${
         running
-          ? 'border-blue-700 bg-blue-950/40 text-blue-300 cursor-not-allowed'
+          ? 'border-blue-700 bg-blue-950/40 text-blue-300 cursor-wait'
           : 'border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-white'
       }`}
-      title={`${missing} companies have no owner logged`}
     >
       {running ? (
         <>
@@ -89,9 +80,7 @@ export function EnrichOwnersButton() {
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
           </svg>
-          {progress
-            ? `${progress.found} found / ${progress.processed} checked`
-            : 'Starting…'}
+          {current ? `${checked} done · ${found} found · ${current}` : 'Starting…'}
         </>
       ) : (
         <>
@@ -99,7 +88,7 @@ export function EnrichOwnersButton() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
               d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
           </svg>
-          AI: Find {missing} missing owner{missing !== 1 ? 's' : ''}
+          Find {missing} missing owner{missing !== 1 ? 's' : ''}
         </>
       )}
     </button>
