@@ -2,7 +2,10 @@ import { NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 
-const BATCH_SIZE = 10
+// Keep each request short — client calls us repeatedly until done
+const BATCH_SIZE = 3
+// Allow up to 60s (requires Vercel Pro; on Hobby it still helps signal intent)
+export const maxDuration = 60
 
 // GET — how many companies are still missing an owner
 export async function GET() {
