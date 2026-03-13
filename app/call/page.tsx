@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 import { createClient } from '@/lib/supabase/server'
 import { CallingSession } from '@/components/CallingSession'
 import type { Company } from '@/types'

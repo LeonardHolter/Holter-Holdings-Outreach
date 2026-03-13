@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 import { createClient } from '@/lib/supabase/server'
 import type { Company } from '@/types'
 import { format, parseISO, isPast, isToday } from 'date-fns'
