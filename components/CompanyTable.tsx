@@ -1,0 +1,459 @@
+'use client'
+
+import { useState, useCallback, useMemo } from 'react'
+import {
+  useReactTable,
+  getCoreRowModel,
+  getSortedRowModel,
+  flexRender,
+  createColumnHelper,
+  type SortingState,
+} from '@tanstack/react-table'
+import { toast } from 'sonner'
+import { isValid, parseISO, isPast, isToday } from 'date-fns'
+import type { Company } from '@/types'
+import { EditableCell } from './EditableCell'
+import { getRowHighlight } from './ResponseBadge'
+
+const col = createColumnHelper<Company>()
+
+interface Props {
+  initialData: Company[]
+}
+
+async function patchCompany(id: string, payload: Partial<Company>): Promise<Company> {
+  const res = await fetch(`/api/companies/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  if (!res.ok) throw new Error('Failed to save')
+  return res.json()
+}
+
+async function deleteCompanyReq(id: string): Promise<void> {
+  const res = await fetch(`/api/companies/${id}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error('Failed to delete')
+}
+
+async function createCompanyReq(payload: Partial<Company>): Promise<Company> {
+  const res = await fetch('/api/companies', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  if (!res.ok) throw new Error('Failed to create')
+  return res.json()
+}
+
+// ── Duplicate detection ───────────────────────────────────────
+
+interface DupeInfo {
+  reasons: string[]          // e.g. ["same phone", "same name"]
+  matchIds: string[]         // other row IDs this one collides with
+}
+
+function buildDupeMap(rows: Company[]): Map<string, DupeInfo> {
+  const map = new Map<string, DupeInfo>()
+
+  // Only flag when BOTH name AND phone match
+  const byNameAndPhone = new Map<string, string[]>()
+  for (const r of rows) {
+    const phone = r.phone_number ? r.phone_number.replace(/\D/g, '') : ''
+    if (!phone) continue
+    const key = `${r.company_name.trim().toLowerCase()}||${phone}`
+    if (!byNameAndPhone.has(key)) byNameAndPhone.set(key, [])
+    byNameAndPhone.get(key)!.push(r.id)
+  }
+
+  for (const [, ids] of byNameAndPhone) {
+    if (ids.length < 2) continue
+    for (const id of ids) {
+      if (!map.has(id)) map.set(id, { reasons: ['same name & phone'], matchIds: [] })
+      map.get(id)!.matchIds.push(...ids.filter(x => x !== id))
+    }
+  }
+
+  return map
+}
+
+// ── DupeFlag badge ────────────────────────────────────────────
+
+function DupeFlag({ info, companyName: _companyName }: { info: DupeInfo; companyName: string }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="relative inline-block">
+      <button
+        onClick={e => { e.stopPropagation(); setOpen(o => !o) }}
+        className="flex items-center gap-1 px-1.5 py-0.5 bg-orange-500/20 border border-orange-500/50 rounded text-orange-400 text-xs font-medium hover:bg-orange-500/30 transition-colors"
+        title="Possible duplicate — click to see details"
+      >
+        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+        </svg>
+        Dupe
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
+          <div className="absolute left-0 top-full mt-1 z-40 bg-gray-900 border border-orange-700/60 rounded-lg shadow-xl p-3 w-56 text-xs">
+            <p className="font-semibold text-orange-400 mb-1">Duplicate detected</p>
+            <p className="text-gray-400">{info.matchIds.length} other row{info.matchIds.length !== 1 ? 's' : ''} share the same name and phone number.</p>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+export function CompanyTable({ initialData }: Props) {
+  const [data, setData] = useState<Company[]>(initialData)
+  const [sorting, setSorting] = useState<SortingState>([{ id: 'google_reviews', desc: true }])
+  const [newRow, setNewRow] = useState<Partial<Company> | null>(null)
+  const [newCompanyName, setNewCompanyName] = useState('')
+  const [newNameError, setNewNameError] = useState(false)
+  const [showDupesOnly, setShowDupesOnly] = useState(false)
+
+  // Recompute dupe map whenever data changes
+  const dupeMap = useMemo(() => buildDupeMap(data), [data])
+  const dupeCount = dupeMap.size
+
+  const displayData = useMemo(
+    () => showDupesOnly ? data.filter(c => dupeMap.has(c.id)) : data,
+    [data, dupeMap, showDupesOnly]
+  )
+
+  const makeUpdater = useCallback(
+    (id: string, field: keyof Company) =>
+      async (value: string | number | null) => {
+        const prev = data.find(c => c.id === id)
+        if (!prev) return
+        const optimistic = { ...prev, [field]: value }
+        setData(d => d.map(c => c.id === id ? optimistic : c))
+        try {
+          const updated = await patchCompany(id, { [field]: value })
+          setData(d => d.map(c => c.id === id ? updated : c))
+          toast.success('Saved')
+        } catch {
+          setData(d => d.map(c => c.id === id ? prev : c))
+          toast.error('Failed to save')
+        }
+      },
+    [data]
+  )
+
+  async function saveNewRow() {
+    if (!newCompanyName.trim()) { setNewNameError(true); return }
+    try {
+      const created = await createCompanyReq({ ...newRow, company_name: newCompanyName.trim() })
+      setData(d => [created, ...d])
+      setNewRow(null)
+      setNewCompanyName('')
+      toast.success('Company added')
+    } catch {
+      toast.error('Failed to create company')
+    }
+  }
+
+  function cancelNewRow() {
+    setNewRow(null)
+    setNewCompanyName('')
+    setNewNameError(false)
+  }
+
+  async function handleDelete(id: string, name: string) {
+    if (!confirm(`Delete "${name}"? This cannot be undone.`)) return
+    const prev = data.find(c => c.id === id)
+    setData(d => d.filter(c => c.id !== id))
+    try {
+      await deleteCompanyReq(id)
+      toast.success('Deleted')
+    } catch {
+      if (prev) setData(d => [prev, ...d])
+      toast.error('Failed to delete')
+    }
+  }
+
+  const columns = [
+    col.accessor('company_name', {
+      header: 'Company Name',
+      size: 260,
+      cell: ({ row }) => {
+        const dupeInfo = dupeMap.get(row.original.id)
+        return (
+          <div className="flex items-center gap-1.5 min-w-0">
+            {dupeInfo && <DupeFlag info={dupeInfo} companyName={row.original.company_name} />}
+            <EditableCell
+              value={row.original.company_name}
+              type="text"
+              onSave={makeUpdater(row.original.id, 'company_name')}
+              className="font-medium text-white"
+            />
+          </div>
+        )
+      },
+    }),
+    col.accessor('google_reviews', {
+      header: 'Reviews',
+      size: 80,
+      cell: ({ row }) => (
+        <EditableCell value={row.original.google_reviews} type="number" onSave={makeUpdater(row.original.id, 'google_reviews')} />
+      ),
+    }),
+    col.accessor('state', {
+      header: 'State',
+      size: 70,
+      cell: ({ row }) => (
+        <EditableCell value={row.original.state} type="select-state" onSave={makeUpdater(row.original.id, 'state')} />
+      ),
+    }),
+    col.accessor('phone_number', {
+      header: 'Phone',
+      size: 140,
+      cell: ({ row }) => (
+        <EditableCell value={row.original.phone_number} type="phone" onSave={makeUpdater(row.original.id, 'phone_number')} />
+      ),
+    }),
+    col.accessor('reach_out_response', {
+      header: 'Response',
+      size: 200,
+      cell: ({ row }) => (
+        <EditableCell value={row.original.reach_out_response} type="select-response" onSave={makeUpdater(row.original.id, 'reach_out_response')} />
+      ),
+    }),
+    col.accessor('last_reach_out', {
+      header: 'Last Reach Out',
+      size: 120,
+      cell: ({ row }) => (
+        <EditableCell value={row.original.last_reach_out} type="date" onSave={makeUpdater(row.original.id, 'last_reach_out')} />
+      ),
+    }),
+    col.accessor('next_reach_out', {
+      header: 'Next Reach Out',
+      size: 120,
+      cell: ({ row }) => {
+        const val = row.original.next_reach_out
+        const parsed = val ? parseISO(val) : null
+        const overdue = parsed && isValid(parsed) && (isPast(parsed) || isToday(parsed))
+        return (
+          <EditableCell value={val} type="date" onSave={makeUpdater(row.original.id, 'next_reach_out')} className={overdue ? 'text-orange-400' : ''} />
+        )
+      },
+    }),
+    col.accessor('owners_name', {
+      header: "Owner's Name",
+      size: 140,
+      cell: ({ row }) => (
+        <EditableCell value={row.original.owners_name} type="text" onSave={makeUpdater(row.original.id, 'owners_name')} />
+      ),
+    }),
+    col.accessor('amount_of_calls', {
+      header: 'Calls',
+      size: 70,
+      cell: ({ row }) => (
+        <EditableCell value={row.original.amount_of_calls} type="number" onSave={makeUpdater(row.original.id, 'amount_of_calls')} />
+      ),
+    }),
+    col.accessor('who_called', {
+      header: 'Who Called',
+      size: 110,
+      cell: ({ row }) => (
+        <EditableCell value={row.original.who_called} type="select-caller" onSave={makeUpdater(row.original.id, 'who_called')} />
+      ),
+    }),
+    col.accessor('email', {
+      header: 'Email',
+      size: 180,
+      cell: ({ row }) => (
+        <EditableCell value={row.original.email} type="email" onSave={makeUpdater(row.original.id, 'email')} />
+      ),
+    }),
+    col.accessor('notes', {
+      header: 'Notes',
+      size: 200,
+      cell: ({ row }) => (
+        <EditableCell value={row.original.notes} type="textarea" onSave={makeUpdater(row.original.id, 'notes')} />
+      ),
+    }),
+    col.display({
+      id: 'actions',
+      size: 44,
+      cell: ({ row }) => (
+        <button
+          onClick={() => handleDelete(row.original.id, row.original.company_name)}
+          className="text-gray-600 hover:text-red-400 transition-colors p-1 rounded"
+          title="Delete row"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+          </svg>
+        </button>
+      ),
+    }),
+  ]
+
+  // eslint-disable-next-line react-hooks/incompatible-library
+  const table = useReactTable({
+    data: displayData,
+    columns,
+    state: { sorting },
+    onSortingChange: setSorting,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+  })
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Toolbar */}
+      <div className="flex items-center justify-between px-4 py-2 border-b border-gray-800 bg-gray-950 shrink-0">
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-gray-500">
+            {displayData.length.toLocaleString()} {displayData.length === 1 ? 'company' : 'companies'}
+          </span>
+          {dupeCount > 0 && (
+            <button
+              onClick={() => setShowDupesOnly(o => !o)}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-medium transition-colors ${
+                showDupesOnly
+                  ? 'border-orange-500 bg-orange-950/40 text-orange-300'
+                  : 'border-orange-700/50 bg-orange-950/20 text-orange-400 hover:bg-orange-950/30'
+              }`}
+            >
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+              </svg>
+              {dupeCount} duplicate{dupeCount !== 1 ? 's' : ''}
+              {showDupesOnly && ' — showing only'}
+            </button>
+          )}
+          {dupeCount === 0 && (
+            <span className="flex items-center gap-1 text-xs text-green-500">
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+              No duplicates
+            </span>
+          )}
+        </div>
+        <button
+          onClick={() => { setNewRow({}); setNewCompanyName(''); setNewNameError(false) }}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg transition-colors"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+          Add Company
+        </button>
+      </div>
+
+      {/* Table */}
+      <div className="overflow-auto flex-1">
+        <table className="border-collapse w-max min-w-full text-sm">
+          <thead className="sticky top-0 z-10">
+            {table.getHeaderGroups().map(hg => (
+              <tr key={hg.id} className="bg-gray-900 border-b border-gray-800">
+                {hg.headers.map((header, i) => (
+                  <th
+                    key={header.id}
+                    style={{ width: header.getSize() }}
+                    className={`px-2 py-2.5 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap border-r border-gray-800 ${
+                      i === 0 ? 'sticky left-0 z-20 bg-gray-900' : ''
+                    } ${header.column.getCanSort() ? 'cursor-pointer select-none hover:text-gray-200' : ''}`}
+                    onClick={header.column.getToggleSortingHandler()}
+                  >
+                    <div className="flex items-center gap-1">
+                      {flexRender(header.column.columnDef.header, header.getContext())}
+                      {header.column.getIsSorted() === 'asc' && <span>↑</span>}
+                      {header.column.getIsSorted() === 'desc' && <span>↓</span>}
+                    </div>
+                  </th>
+                ))}
+              </tr>
+            ))}
+          </thead>
+
+          <tbody>
+            {/* New row */}
+            {newRow !== null && (
+              <tr className="bg-blue-950/20 border-b border-blue-900/50">
+                <td className="sticky left-0 z-10 bg-blue-950/30 px-2 py-1.5 border-r border-gray-800">
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="text"
+                      autoFocus
+                      placeholder="Company name *"
+                      value={newCompanyName}
+                      onChange={e => { setNewCompanyName(e.target.value); setNewNameError(false) }}
+                      onKeyDown={e => { if (e.key === 'Enter') saveNewRow(); if (e.key === 'Escape') cancelNewRow() }}
+                      className={`bg-gray-800 border rounded px-2 py-1 text-sm text-white focus:outline-none w-44 ${newNameError ? 'border-red-500' : 'border-blue-500'}`}
+                    />
+                    <button onClick={saveNewRow} className="text-green-400 hover:text-green-300 p-1" title="Save">
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                    </button>
+                    <button onClick={cancelNewRow} className="text-gray-500 hover:text-gray-300 p-1" title="Cancel">
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                  {newNameError && <p className="text-red-400 text-xs mt-1">Required</p>}
+                </td>
+                {Array.from({ length: columns.length - 1 }).map((_, i) => (
+                  <td key={i} className="border-r border-gray-800 px-2 py-1.5 text-gray-600 text-xs">—</td>
+                ))}
+              </tr>
+            )}
+
+            {table.getRowModel().rows.length === 0 ? (
+              <tr>
+                <td colSpan={columns.length} className="text-center py-16 text-gray-500">
+                  <div className="flex flex-col items-center gap-2">
+                    <svg className="w-8 h-8 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <p>{showDupesOnly ? 'No duplicates found — the data is clean!' : 'No companies match your filters.'}</p>
+                    {showDupesOnly && (
+                      <button onClick={() => setShowDupesOnly(false)} className="text-blue-400 text-sm hover:underline">
+                        Show all companies
+                      </button>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ) : (
+              table.getRowModel().rows.map((row, rowIdx) => {
+                const isDupe = dupeMap.has(row.original.id)
+                const rowBg = getRowHighlight(row.original.reach_out_response)
+                const isEven = rowIdx % 2 === 0
+                return (
+                  <tr
+                    key={row.id}
+                    className={`border-b transition-colors group ${
+                      isDupe
+                        ? 'border-orange-900/40 bg-orange-950/10 hover:bg-orange-950/20'
+                        : `border-gray-800/60 ${rowBg || (isEven ? 'bg-gray-950' : 'bg-gray-900/40')}`
+                    }`}
+                  >
+                    {row.getVisibleCells().map((cell, cellIdx) => (
+                      <td
+                        key={cell.id}
+                        style={{ width: cell.column.getSize() }}
+                        className={`px-1 py-0.5 border-r border-gray-800/50 align-middle max-w-0 ${
+                          cellIdx === 0 ? 'sticky left-0 z-10 bg-inherit' : ''
+                        }`}
+                      >
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </td>
+                    ))}
+                  </tr>
+                )
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}

@@ -1,0 +1,69 @@
+export interface Company {
+  id: string
+  company_name: string
+  google_reviews: number | null
+  state: string | null
+  phone_number: string | null
+  reach_out_response: string | null
+  last_reach_out: string | null
+  next_reach_out: string | null
+  owners_name: string | null
+  amount_of_calls: number
+  who_called: string | null
+  email: string | null
+  notes: string | null
+  calls_leonard: number
+  calls_tommaso: number
+  calls_john: number
+  calls_sunzim: number
+  calls_daniel: number
+  calls_ellison: number
+  total_dialed: number
+  created_at: string
+  updated_at: string
+}
+
+export interface TeamMember {
+  id: string
+  name: string
+}
+
+export interface ResponseStatus {
+  id: string
+  label: string
+}
+
+export interface CompanyFilters {
+  states?: string[]
+  responses?: string[]
+  whoCalled?: string[]
+  nextReachOutFrom?: string
+  nextReachOutTo?: string
+  search?: string
+  notCalled?: boolean
+  introMeetings?: boolean
+}
+
+export const STATES = ['MI', 'MN', 'PA', 'OH', 'WI', 'WA']
+
+export const RESPONSE_STATUSES = [
+  'Did not pick up',
+  'Did not reach the Owner',
+  'Left a message to the owner',
+  'Intro-meeting wanted',
+  'Owner is not interested',
+  'Already acquired',
+  'Not a garage door service company',
+  'Not called',
+  'Number does not exist',
+  'Call back on Monday',
+]
+
+export const TEAM_MEMBERS = [
+  'Leonard',
+  'Tommaso',
+  'John',
+  'Sunzim',
+  'Daniel',
+  'Ellison',
+]
