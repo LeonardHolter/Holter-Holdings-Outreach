@@ -2,9 +2,7 @@ import { NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 
-// Keep each request short — client calls us repeatedly until done
-const BATCH_SIZE = 3
-// Allow up to 60s (requires Vercel Pro; on Hobby it still helps signal intent)
+// Process one company per request to stay well within serverless timeout
 export const maxDuration = 60
 
 // GET — how many companies are still missing an owner
@@ -13,12 +11,12 @@ export async function GET() {
   const { count } = await supabase
     .from('companies')
     .select('id', { count: 'exact', head: true })
-    .or('owners_name.is.null,owners_name.eq.')
+    .or('owners_name.is.null,owners_name.eq.,owners_name.eq.Not found')
 
   return NextResponse.json({ missing: count ?? 0 })
 }
 
-// POST — enrich one batch of BATCH_SIZE companies
+// POST — look up the owner for ONE company at a time
 export async function POST() {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) {
@@ -26,87 +24,72 @@ export async function POST() {
   }
 
   const supabase = await createClient()
-  const anthropic = new Anthropic({ apiKey })
 
-  // Fetch next batch of companies missing an owner
+  // Grab one company that still needs an owner
   const { data: companies, error } = await supabase
     .from('companies')
     .select('id, company_name, state')
-    .or('owners_name.is.null,owners_name.eq.')
-    .limit(BATCH_SIZE)
+    .or('owners_name.is.null,owners_name.eq.,owners_name.eq.Not found')
+    .limit(1)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   if (!companies || companies.length === 0) {
     return NextResponse.json({ processed: 0, found: 0, remaining: 0, results: [] })
   }
 
-  const results: { company: string; owner: string | null; status: string }[] = []
+  const company = companies[0]
+  const anthropic = new Anthropic({ apiKey })
 
-  for (const company of companies) {
+  const location = company.state ? ` in ${company.state}` : ''
+  const prompt =
+    `Who is the owner of "${company.company_name}"${location}? ` +
+    `It is a garage door service company. ` +
+    `Reply with only the owner's full name. If you cannot find it, reply with exactly: UNKNOWN`
+
+  const result = await (async () => {
     try {
-      const location = company.state ? ` in ${company.state}` : ''
-      const prompt =
-        `Search for the current owner or founder of "${company.company_name}", a garage door company${location}. ` +
-        `Reply with ONLY the person's full name (e.g. "John Smith"). ` +
-        `If you cannot find a specific owner name, reply with exactly: UNKNOWN`
-
       const response = await anthropic.messages.create({
-        model: 'claude-sonnet-4-5-20250929',
-        max_tokens: 256,
-        tools: [{ type: 'web_search_20250305' as const, name: 'web_search' }],
+        model: 'claude-sonnet-4-6',
+        max_tokens: 128,
+        tools: [{ type: 'web_search_20260209' as const, name: 'web_search' }],
         messages: [{ role: 'user', content: prompt }],
       })
 
-      // Extract the final text block Claude produces after searching
-      let ownerName = 'UNKNOWN'
+      let raw = 'UNKNOWN'
       for (const block of response.content) {
-        if (block.type === 'text') {
-          ownerName = block.text.trim()
-          break
-        }
+        if (block.type === 'text') { raw = block.text.trim(); break }
       }
 
       const isValid =
-        ownerName !== 'UNKNOWN' &&
-        ownerName.length > 1 &&
-        ownerName.length < 80 &&
-        !ownerName.toLowerCase().includes('i could not') &&
-        !ownerName.toLowerCase().includes('i was unable') &&
-        !ownerName.toLowerCase().includes('not find') &&
-        !ownerName.toLowerCase().includes('no information')
+        raw.length > 1 &&
+        raw.length < 80 &&
+        raw !== 'UNKNOWN' &&
+        !/i (could not|was unable|cannot|don't|do not)|not find|no (information|record|result|owner|data)|unknown/i.test(raw)
 
       if (isValid) {
-        await supabase
-          .from('companies')
-          .update({ owners_name: ownerName })
-          .eq('id', company.id)
-        results.push({ company: company.company_name, owner: ownerName, status: 'found' })
-      } else {
-        // Mark with a placeholder so we don't re-query it every run
-        await supabase
-          .from('companies')
-          .update({ owners_name: 'Not found' })
-          .eq('id', company.id)
-        results.push({ company: company.company_name, owner: null, status: 'not_found' })
+        const name = raw.split(/\n|,| and /i)[0].trim()
+        await supabase.from('companies').update({ owners_name: name }).eq('id', company.id)
+        return { owner: name, status: 'found' as const }
       }
-    } catch {
-      results.push({ company: company.company_name, owner: null, status: 'error' })
+
+      await supabase.from('companies').update({ owners_name: 'Not found' }).eq('id', company.id)
+      return { owner: null, status: 'not_found' as const }
+    } catch (err) {
+      console.error('Enrichment error for', company.company_name, err)
+      return { owner: null, status: 'error' as const }
     }
+  })()
 
-    // Brief pause between requests to respect rate limits
-    await new Promise(r => setTimeout(r, 300))
-  }
-
-  // Count how many still remain after this batch
+  // Count remaining
   const { count: remaining } = await supabase
     .from('companies')
     .select('id', { count: 'exact', head: true })
-    .or('owners_name.is.null,owners_name.eq.')
+    .or('owners_name.is.null,owners_name.eq.,owners_name.eq.Not found')
 
   return NextResponse.json({
-    processed: results.length,
-    found: results.filter(r => r.status === 'found').length,
+    processed: 1,
+    found: result.status === 'found' ? 1 : 0,
     remaining: remaining ?? 0,
-    results,
+    results: [{ company: company.company_name, owner: result.owner, status: result.status }],
   })
 }

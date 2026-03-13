@@ -3,12 +3,6 @@
 import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
 
-interface BatchResult {
-  company: string
-  owner: string | null
-  status: string
-}
-
 export function EnrichOwnersButton() {
   const [missing, setMissing] = useState<number | null>(null)
   const [running, setRunning] = useState(false)
@@ -29,37 +23,38 @@ export function EnrichOwnersButton() {
     let totalFound = 0
     let totalProcessed = 0
     let remaining = missing ?? 999
+    let consecutiveErrors = 0
 
     const toastId = toast.loading(`Searching for owners… (${remaining} to go)`)
 
     try {
-      while (remaining > 0) {
-        const res = await fetch('/api/enrich-owners', { method: 'POST' })
-        if (!res.ok) throw new Error('Server error')
+      while (remaining > 0 && consecutiveErrors < 3) {
+        // Fire 3 parallel requests at a time for speed
+        const batch = await Promise.all([
+          fetch('/api/enrich-owners', { method: 'POST' }).then(r => r.json()).catch(() => null),
+          fetch('/api/enrich-owners', { method: 'POST' }).then(r => r.json()).catch(() => null),
+          fetch('/api/enrich-owners', { method: 'POST' }).then(r => r.json()).catch(() => null),
+        ])
 
-        const data: {
-          processed: number
-          found: number
-          remaining: number
-          results: BatchResult[]
-        } = await res.json()
+        let anySuccess = false
+        for (const data of batch) {
+          if (!data || data.error) { consecutiveErrors++; continue }
+          if (data.processed === 0) { remaining = 0; break }
+          consecutiveErrors = 0
+          anySuccess = true
+          totalFound += data.found
+          totalProcessed += data.processed
+          remaining = data.remaining
+        }
 
-        if (data.processed === 0) break
-
-        totalFound += data.found
-        totalProcessed += data.processed
-        remaining = data.remaining
+        if (!anySuccess) break
 
         setProgress({ found: totalFound, processed: totalProcessed })
         setMissing(remaining)
-
         toast.loading(
           `Searching… ${totalProcessed} checked, ${totalFound} found (${remaining} left)`,
           { id: toastId }
         )
-
-        // Small pause between batches
-        if (remaining > 0) await new Promise(r => setTimeout(r, 500))
       }
 
       toast.success(
