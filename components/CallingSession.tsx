@@ -1,13 +1,19 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
 import type { Company } from '@/types'
 import { RESPONSE_STATUSES, TEAM_MEMBERS, STATES } from '@/types'
+import { createClient } from '@/lib/supabase/client'
 
 interface Props {
   initialQueue: Company[]
+}
+
+interface PresencePayload {
+  companyId: string
+  callerName: string
 }
 
 async function patchCompany(id: string, payload: Partial<Company>): Promise<Company> {
@@ -30,12 +36,23 @@ function twoWeeksFromNow() {
   return format(d, 'yyyy-MM-dd')
 }
 
+// Stable per-tab ID — generated once outside the component so it never changes
+const SESSION_ID =
+  typeof crypto !== 'undefined' ? crypto.randomUUID() : Math.random().toString(36).slice(2)
+
 export function CallingSession({ initialQueue }: Props) {
   const [queue, setQueue] = useState<Company[]>(initialQueue)
   const [index, setIndex] = useState(0)
   const [saving, setSaving] = useState(false)
   const [done, setDone] = useState(false)
   const [sessionCaller, setSessionCaller] = useState<string>('')
+
+  // Realtime presence
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const channelRef = useRef<any>(null)
+  // companyId → callerName (only OTHER callers)
+  const [claimedByOthers, setClaimedByOthers] = useState<Map<string, string>>(new Map())
+  const [activeCallers, setActiveCallers] = useState(0)
 
   // Per-card editable fields
   const [response, setResponse] = useState<string>('')
@@ -47,7 +64,6 @@ export function CallingSession({ initialQueue }: Props) {
 
   const company = queue[index]
 
-  // Load current company values into edit state whenever index changes
   const loadCompany = useCallback((c: Company) => {
     setResponse(c.reach_out_response ?? '')
     setNotes(c.notes ?? '')
@@ -57,12 +73,82 @@ export function CallingSession({ initialQueue }: Props) {
     setCompanyName(c.company_name ?? '')
   }, [])
 
-  // On first render, load the first company
+  // Load first company on mount
   useState(() => {
     if (queue[0]) loadCompany(queue[0])
   })
 
-  // ── Advance to next ──────────────────────────────────────────
+  // ── Realtime presence setup ──────────────────────────────────
+  useEffect(() => {
+    const supabase = createClient()
+    const channel = supabase.channel('calling-session', {
+      config: { presence: { key: SESSION_ID } },
+    })
+
+    channel.on('presence', { event: 'sync' }, () => {
+      const presenceState = channel.presenceState<PresencePayload>()
+      const claimed = new Map<string, string>()
+      let others = 0
+
+      for (const [key, presences] of Object.entries(presenceState)) {
+        if (key === SESSION_ID) continue
+        others++
+        for (const p of presences as PresencePayload[]) {
+          if (p.companyId) claimed.set(p.companyId, p.callerName || 'Someone')
+        }
+      }
+
+      setClaimedByOthers(claimed)
+      setActiveCallers(others)
+    })
+
+    channel.subscribe(async (status: string) => {
+      if (status === 'SUBSCRIBED') {
+        const first = initialQueue[0]
+        if (first) {
+          await channel.track({ companyId: first.id, callerName: '' })
+        }
+      }
+    })
+
+    channelRef.current = channel
+
+    return () => {
+      channel.untrack()
+      channel.unsubscribe()
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Update presence whenever the current company or caller name changes
+  useEffect(() => {
+    const ch = channelRef.current
+    if (!ch || !company) return
+    ch.track({ companyId: company.id, callerName: sessionCaller })
+  }, [company?.id, sessionCaller]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // If someone else claims the company we're currently on, auto-advance
+  useEffect(() => {
+    if (!company || !claimedByOthers.has(company.id)) return
+
+    const callerName = claimedByOthers.get(company.id)
+    toast.warning(`${callerName} is already calling ${company.company_name} — moving you to the next one`)
+
+    const next = findNextUnclaimed(index + 1, queue, claimedByOthers)
+    if (next === -1) {
+      setDone(true)
+    } else {
+      setIndex(next)
+      loadCompany(queue[next])
+    }
+  }, [claimedByOthers]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Navigation helpers ───────────────────────────────────────
+  function findNextUnclaimed(from: number, q: Company[], claimed: Map<string, string>): number {
+    let i = from
+    while (i < q.length && claimed.has(q[i].id)) i++
+    return i < q.length ? i : -1
+  }
+
   async function handleNext(skip = false) {
     if (!company) return
     setSaving(true)
@@ -93,12 +179,12 @@ export function CallingSession({ initialQueue }: Props) {
       setSaving(false)
     }
 
-    const nextIndex = index + 1
-    if (nextIndex >= queue.length) {
+    const next = findNextUnclaimed(index + 1, queue, claimedByOthers)
+    if (next === -1) {
       setDone(true)
     } else {
-      setIndex(nextIndex)
-      loadCompany(queue[nextIndex])
+      setIndex(next)
+      loadCompany(queue[next])
     }
   }
 
@@ -141,11 +227,24 @@ export function CallingSession({ initialQueue }: Props) {
     )
   }
 
-  const progress = ((index) / queue.length) * 100
+  const progress = (index / queue.length) * 100
 
   return (
     <div className="flex-1 overflow-y-auto flex flex-col items-center justify-start py-8 px-4">
       <div className="w-full max-w-2xl space-y-4">
+
+        {/* Active callers indicator */}
+        {activeCallers > 0 && (
+          <div className="flex items-center gap-2 px-3 py-2 bg-green-950/30 border border-green-800/40 rounded-lg">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+            </span>
+            <span className="text-xs text-green-400 font-medium">
+              {activeCallers} other caller{activeCallers > 1 ? 's' : ''} active — duplicate companies are being skipped automatically
+            </span>
+          </div>
+        )}
 
         {/* Session caller picker */}
         {!sessionCaller && (
@@ -323,9 +422,10 @@ export function CallingSession({ initialQueue }: Props) {
           </div>
         </div>
 
-        {/* Mini queue preview */}
-            {queue.length > index + 1 && (() => {
-          const next = queue[index + 1]
+        {/* Up next preview */}
+        {(() => {
+          const nextIdx = findNextUnclaimed(index + 1, queue, claimedByOthers)
+          const next = nextIdx !== -1 ? queue[nextIdx] : null
           return next ? (
             <div className="text-center">
               <p className="text-xs text-gray-600">
