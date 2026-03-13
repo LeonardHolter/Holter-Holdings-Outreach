@@ -39,6 +39,7 @@ export default async function CallPage() {
           <nav className="flex items-center gap-1">
             <a href="/" className="text-sm text-gray-400 hover:text-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-800 transition-colors">Pipeline</a>
             <span className="text-sm font-medium text-white bg-gray-800 px-3 py-1.5 rounded-lg">Calling</span>
+            <a href="/meetings" className="text-sm text-gray-400 hover:text-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-800 transition-colors">Meetings</a>
             <a href="/stats" className="text-sm text-gray-400 hover:text-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-800 transition-colors">Stats</a>
           </nav>
         </div>

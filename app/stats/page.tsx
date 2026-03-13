@@ -87,6 +87,9 @@ export default async function StatsPage() {
             <a href="/call" className="text-sm text-gray-400 hover:text-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-800 transition-colors">
               Calling
             </a>
+            <a href="/meetings" className="text-sm text-gray-400 hover:text-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-800 transition-colors">
+              Meetings
+            </a>
             <span className="text-sm font-medium text-white bg-gray-800 px-3 py-1.5 rounded-lg">
               Stats
             </span>
