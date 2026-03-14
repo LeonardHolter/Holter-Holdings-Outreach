@@ -8,6 +8,7 @@ const LINKS = [
   { href: '/meetings',    label: 'Meetings'   },
   { href: '/stats',       label: 'Stats'      },
   { href: '/recordings',  label: 'Recordings' },
+  { href: '/numbers',     label: 'Numbers'    },
 ]
 
 export function Nav() {
