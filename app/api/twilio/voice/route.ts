@@ -9,8 +9,9 @@ const VoiceResponse = twilio.twiml.VoiceResponse
 // It also atomically increments today's dial counter for the chosen number.
 export async function POST(request: NextRequest) {
   const formData      = await request.formData()
-  const to            = formData.get('To')       as string | null
-  const callerIdParam = formData.get('CallerId') as string | null
+  const to            = formData.get('To')         as string | null
+  const callerIdParam = formData.get('CallerId')   as string | null
+  const callerName    = formData.get('CallerName') as string | null
 
   if (!to) return new NextResponse('Missing To parameter', { status: 400 })
 
@@ -27,11 +28,18 @@ export async function POST(request: NextRequest) {
 
   const baseUrl = `${request.nextUrl.protocol}//${request.nextUrl.host}`
 
+  // Embed callerName + callerId into the callback URL so the recording webhook
+  // knows who made the call when it fires 30-60s later
+  const cbParams = new URLSearchParams()
+  if (callerName)  cbParams.set('callerName', callerName)
+  if (callerId)    cbParams.set('callerNumber', callerId)
+  const recordingCb = `${baseUrl}/api/twilio/recording-webhook?${cbParams.toString()}`
+
   const twiml = new VoiceResponse()
   const dial  = twiml.dial({
     callerId,
     record: 'record-from-answer',
-    recordingStatusCallback: `${baseUrl}/api/twilio/recording-webhook`,
+    recordingStatusCallback: recordingCb,
     recordingStatusCallbackMethod: 'POST',
     recordingStatusCallbackEvent: ['completed'],
     trim: 'trim-silence',

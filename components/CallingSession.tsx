@@ -220,7 +220,7 @@ export function CallingSession({ initialQueue }: Props) {
     try {
       setCallStatus('connecting')
       const call = await deviceRef.current.connect({
-        params: { To: e164, CallerId: callerId },
+        params: { To: e164, CallerId: callerId, CallerName: sessionCaller },
       })
       activeCallRef.current = call
 

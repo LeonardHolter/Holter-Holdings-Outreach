@@ -6,10 +6,14 @@ import { createClient } from '@/lib/supabase/server'
 export async function POST(request: NextRequest) {
   const formData = await request.formData()
 
-  const callSid      = formData.get('CallSid')      as string
-  const recordingSid = formData.get('RecordingSid') as string
-  const recordingUrl = formData.get('RecordingUrl') as string
-  const duration     = formData.get('RecordingDuration') as string
+  const callSid      = formData.get('CallSid')           as string
+  const recordingSid = formData.get('RecordingSid')       as string
+  const recordingUrl = formData.get('RecordingUrl')       as string
+  const duration     = formData.get('RecordingDuration')  as string
+
+  // callerName + callerNumber were embedded in the callback URL by the voice webhook
+  const callerName   = request.nextUrl.searchParams.get('callerName')   ?? null
+  const callerNumber = request.nextUrl.searchParams.get('callerNumber') ?? null
 
   if (!callSid || !recordingUrl) {
     return NextResponse.json({ error: 'Missing params' }, { status: 400 })
@@ -20,22 +24,25 @@ export async function POST(request: NextRequest) {
   // Find the company that owns this callSid
   const { data: company } = await supabase
     .from('companies')
-    .select('id')
+    .select('id, who_called')
     .eq('last_call_sid', callSid)
     .single()
 
-  if (company) {
-    await supabase.from('call_recordings').insert({
-      company_id:       company.id,
-      call_sid:         callSid,
-      recording_url:    `${recordingUrl}.mp3`,
-      duration_seconds: duration ? parseInt(duration, 10) : null,
-    })
-  } else {
-    // No company match — log but don't error
-    console.warn(`Recording ${callSid} could not be matched to a company`)
+  const row = {
+    call_sid:         callSid,
+    recording_url:    `${recordingUrl}.mp3`,
+    duration_seconds: duration ? parseInt(duration, 10) : null,
+    called_by:        callerName ?? company?.who_called ?? null,
+    caller_name:      callerName,
+    caller_number:    callerNumber,
   }
 
-  console.log(`Recording saved: ${recordingSid} for call ${callSid}`)
+  if (company) {
+    await supabase.from('call_recordings').insert({ company_id: company.id, ...row })
+  } else {
+    console.warn(`Recording ${callSid} could not be matched to a company — saving without company_id`)
+  }
+
+  console.log(`Recording saved: ${recordingSid} for call ${callSid} by ${callerName ?? 'unknown'}`)
   return NextResponse.json({ ok: true })
 }
