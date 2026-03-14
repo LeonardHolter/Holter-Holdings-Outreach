@@ -59,16 +59,12 @@ export interface CompanyFilters {
 export const STATES = ['MI', 'MN', 'PA', 'OH', 'WI', 'WA']
 
 export const RESPONSE_STATUSES = [
-  'Did not pick up',
   'Did not reach the Owner',
-  'Left a message to the owner',
   'Intro-meeting wanted',
   'Owner is not interested',
   'Already acquired',
   'Not a garage door service company',
-  'Not called',
   'Number does not exist',
-  'Call back on Monday',
 ]
 
 export const TEAM_MEMBERS = [
