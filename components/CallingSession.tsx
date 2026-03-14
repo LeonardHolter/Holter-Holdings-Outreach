@@ -71,6 +71,9 @@ export function CallingSession({ initialQueue }: Props) {
   const [callStatus, setCallStatus]   = useState<CallStatus>('idle')
   const [callSid, setCallSid]         = useState('')
   const [callerId, setCallerId]       = useState('')
+  const [_usageToday, setUsageToday]  = useState(0)
+  const [dailyCap]                    = useState(80)
+  const [allUsage, setAllUsage]       = useState<{ number: string; count: number }[]>([])
   const [isMuted, setIsMuted]         = useState(false)
   const [duration, setDuration]       = useState(0)
   const timerRef   = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -171,9 +174,11 @@ export function CallingSession({ initialQueue }: Props) {
           body: JSON.stringify({ callerName: sessionCaller }),
         })
         if (!res.ok) { console.warn('Twilio token failed — calling disabled'); return }
-        const { token, callerId: cid } = await res.json()
+        const { token, callerId: cid, usageToday: usage, allUsage: all } = await res.json()
         if (destroyed) return
         setCallerId(cid)
+        setUsageToday(usage ?? 0)
+        setAllUsage(all ?? [])
         const device = new Device(token, { logLevel: 1, enableImprovedSignalingErrorPrecision: true })
         // Explicitly request echo cancellation + noise suppression on the mic
         // This is the #1 cause of echo in browser-based VoIP
@@ -216,6 +221,10 @@ export function CallingSession({ initialQueue }: Props) {
         params: { To: e164, CallerId: callerId },
       })
       activeCallRef.current = call
+
+      // Optimistically increment local usage counter when call connects
+      setUsageToday(u => u + 1)
+      setAllUsage(prev => prev.map(n => n.number === callerId ? { ...n, count: n.count + 1 } : n))
 
       call.on('accept', () => {
         setCallStatus('connected')
@@ -368,13 +377,48 @@ export function CallingSession({ initialQueue }: Props) {
         )}
 
         {sessionCaller && (
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-500">
-              Calling as <span className="text-gray-300 font-medium">{sessionCaller}</span>
-              {callerId && <span className="text-gray-600 ml-1">via {callerId}</span>}
-              <button onClick={() => setSessionCaller('')} className="ml-2 text-gray-600 hover:text-gray-400 text-xs underline">change</button>
-            </span>
-            <span className="text-sm text-gray-500">{index + 1} / {queue.length}</span>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-500">
+                Calling as <span className="text-gray-300 font-medium">{sessionCaller}</span>
+                <button onClick={() => setSessionCaller('')} className="ml-2 text-gray-600 hover:text-gray-400 text-xs underline">change</button>
+              </span>
+              <span className="text-sm text-gray-500">{index + 1} / {queue.length}</span>
+            </div>
+
+            {/* Number health panel */}
+            {allUsage.length > 0 && (
+              <div className="bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 space-y-2">
+                <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Number rotation — today</p>
+                <div className="space-y-1.5">
+                  {allUsage.map(({ number, count }) => {
+                    const pct     = Math.min((count / dailyCap) * 100, 100)
+                    const active  = number === callerId
+                    const warning = pct >= 75
+                    const danger  = pct >= 95
+                    const barColor = danger ? 'bg-red-500' : warning ? 'bg-yellow-500' : 'bg-green-500'
+                    const label   = danger ? 'At cap' : warning ? 'Near cap' : 'Healthy'
+                    return (
+                      <div key={number} className={`rounded-lg px-3 py-2 ${active ? 'bg-gray-800 border border-gray-700' : ''}`}>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className={`text-xs font-mono ${active ? 'text-white font-semibold' : 'text-gray-400'}`}>
+                            {number}
+                            {active && <span className="ml-1.5 text-blue-400 text-[10px] font-normal">← yours today</span>}
+                          </span>
+                          <span className={`text-xs ${danger ? 'text-red-400' : warning ? 'text-yellow-400' : 'text-gray-500'}`}>
+                            {count}/{dailyCap} · {label}
+                          </span>
+                        </div>
+                        <div className="w-full h-1 bg-gray-700 rounded-full overflow-hidden">
+                          <div className={`h-1 rounded-full transition-all ${barColor}`} style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+                <p className="text-[10px] text-gray-600">Rotates daily · 80 dials/number cap · auto-switches if cap hit</p>
+              </div>
+            )}
           </div>
         )}
 
