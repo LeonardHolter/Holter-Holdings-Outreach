@@ -105,6 +105,9 @@ export default async function HomePage({ searchParams }: PageProps) {
             <a href="/stats" className="text-sm text-gray-400 hover:text-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-800 transition-colors">
               Stats
             </a>
+            <a href="/recordings" className="text-sm text-gray-400 hover:text-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-800 transition-colors">
+              Recordings
+            </a>
           </nav>
         </div>
         <SignOutButton />

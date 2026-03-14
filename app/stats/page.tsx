@@ -111,6 +111,9 @@ export default async function StatsPage() {
             <span className="text-sm font-medium text-white bg-gray-800 px-3 py-1.5 rounded-lg">
               Stats
             </span>
+            <a href="/recordings" className="text-sm text-gray-400 hover:text-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-800 transition-colors">
+              Recordings
+            </a>
           </nav>
         </div>
         <form action="/api/auth/signout" method="POST">

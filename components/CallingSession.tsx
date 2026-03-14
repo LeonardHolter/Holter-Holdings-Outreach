@@ -2,8 +2,8 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { toast } from 'sonner'
-import { format, parseISO } from 'date-fns'
-import type { Company, CallRecording } from '@/types'
+import { format } from 'date-fns'
+import type { Company } from '@/types'
 import { RESPONSE_STATUSES, TEAM_MEMBERS, STATES } from '@/types'
 import { createClient } from '@/lib/supabase/client'
 
@@ -78,9 +78,6 @@ export function CallingSession({ initialQueue }: Props) {
   const [showDialpad, setShowDialpad] = useState(false)
   const [dialpadInput, setDialpadInput] = useState('')
 
-  // Recordings drawer
-  const [recordings, setRecordings]   = useState<CallRecording[]>([])
-  const [showRecordings, setShowRecordings] = useState(false)
 
   const company = queue[index]
 
@@ -109,8 +106,6 @@ export function CallingSession({ initialQueue }: Props) {
     setCallStatus('idle')
     setCallSid('')
     setDuration(0)
-    setShowRecordings(false)
-    setRecordings([])
     const noOwner = !c.owners_name || c.owners_name === 'Not found'
     if (noOwner && c.company_name) lookupOwner(c.company_name, c.state ?? '')
   }, [lookupOwner])
@@ -258,18 +253,6 @@ export function CallingSession({ initialQueue }: Props) {
   function sendDigit(digit: string) {
     activeCallRef.current?.sendDigits(digit)
     setDialpadInput(prev => prev + digit)
-  }
-
-  // ── Recordings ───────────────────────────────────────────────
-  async function loadRecordings() {
-    if (!company) return
-    const res = await fetch(`/api/twilio/recordings/${company.id}`)
-    if (res.ok) setRecordings(await res.json())
-  }
-
-  function toggleRecordings() {
-    if (!showRecordings && recordings.length === 0) loadRecordings()
-    setShowRecordings(s => !s)
   }
 
   // ── Navigation ───────────────────────────────────────────────
@@ -587,50 +570,16 @@ export function CallingSession({ initialQueue }: Props) {
             {!response && <p className="text-xs text-gray-600 text-center">Select a call outcome to log and advance</p>}
           </div>
 
-          {/* Recordings drawer */}
-          <div className="border-t border-gray-800">
-            <button onClick={toggleRecordings}
-              className="w-full flex items-center justify-between px-6 py-3 hover:bg-gray-800/40 transition-colors text-sm text-gray-400">
-              <span className="flex items-center gap-2">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                    d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
-                </svg>
-                Recordings
-              </span>
-              <svg className={`w-4 h-4 transition-transform ${showRecordings ? 'rotate-180' : ''}`}
-                fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          {/* Link to recordings page */}
+          <div className="border-t border-gray-800 px-6 py-3">
+            <a href="/recordings"
+              className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-300 transition-colors">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
               </svg>
-            </button>
-
-            {showRecordings && (
-              <div className="px-6 pb-4">
-                {recordings.length === 0 ? (
-                  <p className="text-sm text-gray-600 py-2">No recordings yet for this company.</p>
-                ) : (
-                  <div className="space-y-2">
-                    {recordings.map(r => (
-                      <div key={r.id} className="flex items-center gap-3 py-2 border-b border-gray-800 last:border-0">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs text-gray-400">
-                            {format(parseISO(r.called_at), 'MMM d, yyyy · h:mm a')}
-                            {r.called_by && <span className="ml-2 text-gray-600">by {r.called_by}</span>}
-                          </p>
-                          {r.duration_seconds != null && (
-                            <p className="text-xs text-gray-600">{fmtDuration(r.duration_seconds)}</p>
-                          )}
-                        </div>
-                        {r.recording_url && (
-                          <audio controls src={r.recording_url}
-                            className="h-8 max-w-[180px]" preload="none" />
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
+              View all recordings →
+            </a>
           </div>
         </div>
 
