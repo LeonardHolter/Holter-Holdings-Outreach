@@ -46,7 +46,20 @@ export function CallingSession({ initialQueue }: Props) {
   const [index, setIndex]             = useState(0)
   const [saving, setSaving]           = useState(false)
   const [done, setDone]               = useState(false)
-  const [sessionCaller, setSessionCaller] = useState('')
+  const [sessionCaller, setSessionCallerState] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('sessionCaller') ?? ''
+    }
+    return ''
+  })
+
+  function setSessionCaller(name: string) {
+    setSessionCallerState(name)
+    if (typeof window !== 'undefined') {
+      if (name) localStorage.setItem('sessionCaller', name)
+      else localStorage.removeItem('sessionCaller')
+    }
+  }
 
   // Presence
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
