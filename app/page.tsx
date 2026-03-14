@@ -3,7 +3,6 @@ export const dynamic = 'force-dynamic'
 import { Suspense } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import { CompanyTable } from '@/components/CompanyTable'
-import { FilterBar } from '@/components/FilterBar'
 import { StatsPanel } from '@/components/StatsPanel'
 import { Nav } from '@/components/Nav'
 import type { Company, CompanyFilters } from '@/types'
@@ -90,13 +89,6 @@ export default async function HomePage({ searchParams }: PageProps) {
   return (
     <div className="flex flex-col h-[100dvh] overflow-hidden bg-gray-950">
       <Nav />
-
-      {/* Filter bar */}
-      <div className="shrink-0 px-4 py-2.5 border-b border-gray-800 bg-gray-950 overflow-x-auto">
-        <Suspense fallback={null}>
-          <FilterBar />
-        </Suspense>
-      </div>
 
       {/* Stats + Table */}
       <div className="flex flex-col flex-1 overflow-hidden px-4 pt-3 gap-3">
