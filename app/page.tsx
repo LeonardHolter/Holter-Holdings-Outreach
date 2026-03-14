@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 import { CompanyTable } from '@/components/CompanyTable'
 import { FilterBar } from '@/components/FilterBar'
 import { StatsPanel } from '@/components/StatsPanel'
+import { Nav } from '@/components/Nav'
 import type { Company, CompanyFilters } from '@/types'
 
 interface PageProps {
@@ -87,31 +88,8 @@ export default async function HomePage({ searchParams }: PageProps) {
   const filters = parseFilters(sp)
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden bg-gray-950">
-      {/* Top nav */}
-      <header className="shrink-0 flex items-center justify-between px-4 h-12 border-b border-gray-800 bg-gray-900">
-        <div className="flex items-center gap-4">
-          <span className="font-semibold text-white text-sm">Holter Holdings</span>
-          <nav className="flex items-center gap-1">
-            <span className="text-sm font-medium text-white bg-gray-800 px-3 py-1.5 rounded-lg">
-              Pipeline
-            </span>
-            <a href="/call" className="text-sm text-gray-400 hover:text-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-800 transition-colors">
-              Calling
-            </a>
-            <a href="/meetings" className="text-sm text-gray-400 hover:text-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-800 transition-colors">
-              Meetings
-            </a>
-            <a href="/stats" className="text-sm text-gray-400 hover:text-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-800 transition-colors">
-              Stats
-            </a>
-            <a href="/recordings" className="text-sm text-gray-400 hover:text-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-800 transition-colors">
-              Recordings
-            </a>
-          </nav>
-        </div>
-        <SignOutButton />
-      </header>
+    <div className="flex flex-col h-[100dvh] overflow-hidden bg-gray-950">
+      <Nav />
 
       {/* Filter bar */}
       <div className="shrink-0 px-4 py-2.5 border-b border-gray-800 bg-gray-950 overflow-x-auto">
@@ -127,19 +105,6 @@ export default async function HomePage({ searchParams }: PageProps) {
         </Suspense>
       </div>
     </div>
-  )
-}
-
-function SignOutButton() {
-  return (
-    <form action="/api/auth/signout" method="POST">
-      <button
-        type="submit"
-        className="text-gray-400 hover:text-gray-200 text-sm px-3 py-1.5 rounded-lg hover:bg-gray-800 transition-colors"
-      >
-        Sign out
-      </button>
-    </form>
   )
 }
 

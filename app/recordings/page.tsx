@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 import { createClient } from '@/lib/supabase/server'
 import { format, parseISO } from 'date-fns'
 import RecordingsPlayer from '@/components/RecordingsPlayer'
+import { Nav } from '@/components/Nav'
 
 interface RecordingRow {
   id: string
@@ -52,33 +53,9 @@ export default async function RecordingsPage() {
 
   const callers = Object.keys(grouped).sort()
 
-  const nav = [
-    { href: '/', label: 'Pipeline' },
-    { href: '/call', label: 'Calling' },
-    { href: '/meetings', label: 'Meetings' },
-    { href: '/stats', label: 'Stats' },
-    { href: '/recordings', label: 'Recordings', active: true },
-  ]
-
   return (
-    <div className="flex flex-col min-h-screen bg-gray-950">
-      <header className="shrink-0 flex items-center justify-between px-4 h-12 border-b border-gray-800 bg-gray-900">
-        <div className="flex items-center gap-4">
-          <span className="font-semibold text-white text-sm">Holter Holdings</span>
-          <nav className="flex items-center gap-1">
-            {nav.map(n => (
-              <a key={n.href} href={n.href}
-                className={`text-sm px-3 py-1.5 rounded-lg transition-colors ${
-                  n.active
-                    ? 'font-medium text-white bg-gray-800'
-                    : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800'
-                }`}>
-                {n.label}
-              </a>
-            ))}
-          </nav>
-        </div>
-      </header>
+    <div className="flex flex-col min-h-[100dvh] bg-gray-950">
+      <Nav />
 
       <main className="flex-1 max-w-4xl w-full mx-auto px-4 py-8 space-y-8">
         <div>

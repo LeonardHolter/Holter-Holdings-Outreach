@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { Toaster } from 'sonner'
 import './globals.css'
@@ -9,6 +9,12 @@ const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin']
 export const metadata: Metadata = {
   title: 'Holter Holdings — Outreach CRM',
   description: 'Garage door company acquisition outreach tracker',
+}
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',   // respect iPhone notch / home indicator
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

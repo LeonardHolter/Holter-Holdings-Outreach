@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic'
 
 import { createClient } from '@/lib/supabase/server'
 import type { Company } from '@/types'
+import { Nav } from '@/components/Nav'
 
 async function fetchAll(): Promise<Company[]> {
   const supabase = await createClient()
@@ -93,35 +94,8 @@ export default async function StatsPage() {
   ].filter(r => r.count > 0)
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden bg-gray-950">
-      {/* Nav */}
-      <header className="shrink-0 flex items-center justify-between px-4 h-12 border-b border-gray-800 bg-gray-900">
-        <div className="flex items-center gap-4">
-          <span className="font-semibold text-white text-sm">Holter Holdings</span>
-          <nav className="flex items-center gap-1">
-            <a href="/" className="text-sm text-gray-400 hover:text-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-800 transition-colors">
-              Pipeline
-            </a>
-            <a href="/call" className="text-sm text-gray-400 hover:text-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-800 transition-colors">
-              Calling
-            </a>
-            <a href="/meetings" className="text-sm text-gray-400 hover:text-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-800 transition-colors">
-              Meetings
-            </a>
-            <span className="text-sm font-medium text-white bg-gray-800 px-3 py-1.5 rounded-lg">
-              Stats
-            </span>
-            <a href="/recordings" className="text-sm text-gray-400 hover:text-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-800 transition-colors">
-              Recordings
-            </a>
-          </nav>
-        </div>
-        <form action="/api/auth/signout" method="POST">
-          <button type="submit" className="text-gray-400 hover:text-gray-200 text-sm px-3 py-1.5 rounded-lg hover:bg-gray-800 transition-colors">
-            Sign out
-          </button>
-        </form>
-      </header>
+    <div className="flex flex-col h-[100dvh] overflow-hidden bg-gray-950">
+      <Nav />
 
       <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
 
