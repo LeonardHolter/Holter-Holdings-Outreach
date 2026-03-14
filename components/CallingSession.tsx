@@ -200,9 +200,15 @@ export function CallingSession({ initialQueue }: Props) {
   async function handleCall() {
     if (!deviceRef.current || !phoneNumber || callStatus !== 'idle') return
 
+    // Normalize to E.164 — strip all non-digits then prepend +1 if US
+    const digits = phoneNumber.replace(/\D/g, '')
+    const e164   = digits.startsWith('1') ? `+${digits}` : `+1${digits}`
+
     try {
       setCallStatus('connecting')
-      const call = await deviceRef.current.connect({ params: { To: phoneNumber } })
+      const call = await deviceRef.current.connect({
+        params: { To: e164, CallerId: callerId },
+      })
       activeCallRef.current = call
 
       call.on('accept', () => {
