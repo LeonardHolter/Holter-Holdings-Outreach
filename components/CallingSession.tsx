@@ -74,6 +74,8 @@ export function CallingSession({ initialQueue }: Props) {
   const [_usageToday, setUsageToday]  = useState(0)
   const [dailyCap]                    = useState(80)
   const [allUsage, setAllUsage]       = useState<{ number: string; count: number }[]>([])
+  const [healthData, setHealthData]   = useState<Record<string, { isSpam: boolean; reportCount: number; lastReported: string | null; error?: string }>>({})
+  const [checkingHealth, setCheckingHealth] = useState(false)
   const [isMuted, setIsMuted]         = useState(false)
   const [duration, setDuration]       = useState(0)
   const timerRef   = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -255,6 +257,19 @@ export function CallingSession({ initialQueue }: Props) {
     }
   }
 
+  async function checkNumberHealth() {
+    setCheckingHealth(true)
+    try {
+      const res = await fetch('/api/number-health')
+      if (!res.ok) { toast.error('Health check failed'); return }
+      const data: { raw: string; isSpam: boolean; reportCount: number; lastReported: string | null; error?: string }[] = await res.json()
+      const map: typeof healthData = {}
+      for (const d of data) map[d.raw] = { isSpam: d.isSpam, reportCount: d.reportCount, lastReported: d.lastReported, error: d.error }
+      setHealthData(map)
+    } catch { toast.error('Health check failed') }
+    finally { setCheckingHealth(false) }
+  }
+
   function handleMute() {
     if (!activeCallRef.current) return
     const next = !isMuted
@@ -389,24 +404,51 @@ export function CallingSession({ initialQueue }: Props) {
             {/* Number health panel */}
             {allUsage.length > 0 && (
               <div className="bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 space-y-2">
-                <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Number rotation — today</p>
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Number rotation — today</p>
+                  <button onClick={checkNumberHealth} disabled={checkingHealth}
+                    className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-300 transition-colors disabled:opacity-50">
+                    {checkingHealth
+                      ? <><svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Checking…</>
+                      : <><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>Spam check</>
+                    }
+                  </button>
+                </div>
                 <div className="space-y-1.5">
                   {allUsage.map(({ number, count }) => {
-                    const pct     = Math.min((count / dailyCap) * 100, 100)
-                    const active  = number === callerId
-                    const warning = pct >= 75
-                    const danger  = pct >= 95
+                    const pct      = Math.min((count / dailyCap) * 100, 100)
+                    const active   = number === callerId
+                    const warning  = pct >= 75
+                    const danger   = pct >= 95
                     const barColor = danger ? 'bg-red-500' : warning ? 'bg-yellow-500' : 'bg-green-500'
-                    const label   = danger ? 'At cap' : warning ? 'Near cap' : 'Healthy'
+                    const dialLabel = danger ? 'At cap' : warning ? 'Near cap' : 'Healthy'
+                    const health   = healthData[number]
                     return (
                       <div key={number} className={`rounded-lg px-3 py-2 ${active ? 'bg-gray-800 border border-gray-700' : ''}`}>
                         <div className="flex items-center justify-between mb-1">
-                          <span className={`text-xs font-mono ${active ? 'text-white font-semibold' : 'text-gray-400'}`}>
-                            {number}
-                            {active && <span className="ml-1.5 text-blue-400 text-[10px] font-normal">← yours today</span>}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className={`text-xs font-mono ${active ? 'text-white font-semibold' : 'text-gray-400'}`}>
+                              {number}
+                              {active && <span className="ml-1.5 text-blue-400 text-[10px] font-normal">← yours today</span>}
+                            </span>
+                            {/* Spam health badge */}
+                            {health && !health.error && (
+                              health.isSpam || health.reportCount > 0 ? (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-950/60 border border-red-800 text-red-300">
+                                  ⚠ {health.reportCount} report{health.reportCount !== 1 ? 's' : ''}
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-950/60 border border-green-800 text-green-400">
+                                  ✓ Clean
+                                </span>
+                              )
+                            )}
+                            {health?.error && (
+                              <span className="text-[10px] text-gray-600">check failed</span>
+                            )}
+                          </div>
                           <span className={`text-xs ${danger ? 'text-red-400' : warning ? 'text-yellow-400' : 'text-gray-500'}`}>
-                            {count}/{dailyCap} · {label}
+                            {count}/{dailyCap} · {dialLabel}
                           </span>
                         </div>
                         <div className="w-full h-1 bg-gray-700 rounded-full overflow-hidden">
