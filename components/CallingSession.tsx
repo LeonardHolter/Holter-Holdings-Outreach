@@ -174,7 +174,16 @@ export function CallingSession({ initialQueue }: Props) {
         const { token, callerId: cid } = await res.json()
         if (destroyed) return
         setCallerId(cid)
-        const device = new Device(token, { logLevel: 1 })
+        const device = new Device(token, { logLevel: 1, enableImprovedSignalingErrorPrecision: true })
+        // Explicitly request echo cancellation + noise suppression on the mic
+        // This is the #1 cause of echo in browser-based VoIP
+        if (device.audio) {
+          await device.audio.setAudioConstraints({
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          })
+        }
         device.on('error', (err: Error) => toast.error(`Twilio: ${err.message}`))
         await device.register()
         if (!destroyed) { deviceRef.current = device; setDeviceReady(true) }
