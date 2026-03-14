@@ -19,8 +19,20 @@ export interface Company {
   calls_daniel: number
   calls_ellison: number
   total_dialed: number
+  last_call_sid: string | null
   created_at: string
   updated_at: string
+}
+
+export interface CallRecording {
+  id: string
+  company_id: string
+  call_sid: string
+  caller_name: string | null
+  recording_url: string | null
+  duration_seconds: number | null
+  called_at: string
+  called_by: string | null
 }
 
 export interface TeamMember {
