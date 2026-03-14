@@ -88,19 +88,22 @@ export default function RecordingsPlayer({ src }: { src: string }) {
       <div className="flex items-center gap-2 mb-3">
         <span className="text-xs text-gray-400 w-9 text-right tabular-nums shrink-0">{fmt(current)}</span>
 
-        <div className="relative flex-1 h-1.5 rounded-full bg-gray-700 cursor-pointer" style={{ minWidth: 0 }}>
-          {/* Filled track */}
-          <div className="absolute inset-y-0 left-0 rounded-full bg-blue-500 pointer-events-none" style={{ width: `${pct}%` }} />
-          {/* Invisible range input over the whole bar */}
+        {/* Tall wrapper gives a large touch/click target; visual track is the inner thin bar */}
+        <div className="relative flex-1 h-8 flex items-center cursor-pointer" style={{ minWidth: 0 }}>
+          {/* Visual track */}
+          <div className="absolute inset-x-0 h-1.5 rounded-full bg-gray-700 pointer-events-none">
+            <div className="absolute inset-y-0 left-0 rounded-full bg-blue-500" style={{ width: `${pct}%` }} />
+          </div>
+          {/* Thumb */}
+          <div
+            className="absolute w-4 h-4 rounded-full bg-white shadow border-2 border-blue-500 pointer-events-none"
+            style={{ left: `${pct}%`, transform: 'translateX(-50%)' }}
+          />
+          {/* Range input — same size as wrapper so entire height is draggable */}
           <input
             type="range" min={0} max={duration || 100} step={0.5} value={current}
             onChange={seek}
             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-          />
-          {/* Thumb */}
-          <div
-            className="absolute top-1/2 -translate-y-1/2 w-3.5 h-3.5 rounded-full bg-white shadow-md border-2 border-blue-500 pointer-events-none transition-none"
-            style={{ left: `clamp(7px, calc(${pct}% ), calc(100% - 7px))`, transform: 'translate(-50%, -50%)' }}
           />
         </div>
 
