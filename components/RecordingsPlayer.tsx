@@ -20,14 +20,20 @@ export default function RecordingsPlayer({ src }: { src: string }) {
   useEffect(() => {
     const el = audioRef.current
     if (!el) return
-    const onTime = () => setCurrent(el.currentTime)
-    const onMeta = () => { if (isFinite(el.duration)) setDuration(el.duration) }
-    const onEnd  = () => { setPlaying(false); setCurrent(0) }
+    const onPlay  = () => setPlaying(true)
+    const onPause = () => setPlaying(false)
+    const onTime  = () => setCurrent(el.currentTime)
+    const onMeta  = () => { if (isFinite(el.duration)) setDuration(el.duration) }
+    const onEnd   = () => { setPlaying(false); setCurrent(0) }
+    el.addEventListener('play',           onPlay)
+    el.addEventListener('pause',          onPause)
     el.addEventListener('timeupdate',     onTime)
     el.addEventListener('loadedmetadata', onMeta)
     el.addEventListener('durationchange', onMeta)
     el.addEventListener('ended',          onEnd)
     return () => {
+      el.removeEventListener('play',           onPlay)
+      el.removeEventListener('pause',          onPause)
       el.removeEventListener('timeupdate',     onTime)
       el.removeEventListener('loadedmetadata', onMeta)
       el.removeEventListener('durationchange', onMeta)
@@ -35,16 +41,11 @@ export default function RecordingsPlayer({ src }: { src: string }) {
     }
   }, [])
 
-  async function toggle() {
+  function toggle() {
     const el = audioRef.current
     if (!el) return
-    if (playing) {
-      el.pause()
-      setPlaying(false)
-    } else {
-      await el.play()
-      setPlaying(true)
-    }
+    if (el.paused) el.play().catch(() => {})
+    else el.pause()
   }
 
   function seek(e: React.ChangeEvent<HTMLInputElement>) {
