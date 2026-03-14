@@ -90,24 +90,28 @@ export default async function RecordingsPage() {
                   : null
 
                 return (
-                  <div key={r.id} className="flex items-center gap-4 px-4 py-3">
-                    {/* Company info */}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-white text-sm font-medium truncate">
-                        {company?.company_name ?? 'Unknown company'}
-                        {company?.state && (
-                          <span className="text-gray-500 font-normal ml-1.5">{company.state}</span>
-                        )}
-                      </p>
-                      <p className="text-gray-500 text-xs mt-0.5">
-                        {format(parseISO(r.called_at), 'MMM d, yyyy · h:mm a')}
-                        {fmtDuration(r.duration_seconds) && (
-                          <span className="ml-2 text-gray-600">{fmtDuration(r.duration_seconds)}</span>
-                        )}
-                      </p>
+                  <div key={r.id} className="px-4 py-4 space-y-3">
+                    {/* Company info row */}
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-white text-sm font-semibold truncate">
+                          {company?.company_name ?? 'Unknown company'}
+                          {company?.state && (
+                            <span className="text-gray-500 font-normal ml-1.5">{company.state}</span>
+                          )}
+                        </p>
+                        <p className="text-gray-500 text-xs mt-0.5">
+                          {format(parseISO(r.called_at), 'MMM d, yyyy · h:mm a')}
+                        </p>
+                      </div>
+                      {fmtDuration(r.duration_seconds) && (
+                        <span className="shrink-0 text-xs text-gray-500 bg-gray-800 px-2 py-0.5 rounded-full tabular-nums">
+                          {fmtDuration(r.duration_seconds)}
+                        </span>
+                      )}
                     </div>
 
-                    {/* Audio player — client component to avoid SSR issues */}
+                    {/* Audio player — full width */}
                     {streamUrl && <RecordingsPlayer src={streamUrl} />}
                   </div>
                 )
