@@ -225,9 +225,20 @@ export function CallingSession({ initialQueue }: Props) {
   async function handleCall() {
     if (!deviceRef.current || !phoneNumber || callStatus !== 'idle') return
 
-    // Normalize to E.164 — strip all non-digits then prepend +1 if US
+    // Normalize to E.164
     const digits = phoneNumber.replace(/\D/g, '')
-    const e164   = digits.startsWith('1') ? `+${digits}` : `+1${digits}`
+    // 11 digits starting with 1 → already has country code
+    // 10 digits with valid US area code (2-9) → prepend +1
+    // Otherwise reject
+    const e164 =
+      digits.length === 11 && digits.startsWith('1') ? `+${digits}` :
+      digits.length === 10 && /^[2-9]/.test(digits) ? `+1${digits}` :
+      null
+
+    if (!e164) {
+      toast.error(`Invalid phone number: ${phoneNumber}`)
+      return
+    }
 
     try {
       setCallStatus('connecting')
