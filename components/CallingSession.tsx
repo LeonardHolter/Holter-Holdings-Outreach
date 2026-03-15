@@ -85,14 +85,7 @@ export function CallingSession({ initialQueue }: Props) {
   const [callerId, setCallerId]       = useState('')
   const [_usageToday, setUsageToday]  = useState(0)
   const [dailyCap]                    = useState(80)
-  const [allUsage, setAllUsage]       = useState<{ number: string; count: number }[]>(() => {
-    if (typeof window === 'undefined') return []
-    try {
-      const today = new Date().toISOString().slice(0, 10)
-      const raw = localStorage.getItem(`dialUsage_${today}`)
-      return raw ? JSON.parse(raw) : []
-    } catch { return [] }
-  })
+  const [allUsage, setAllUsage]       = useState<{ number: string; count: number }[]>([])
   const [healthData, setHealthData]   = useState<Record<string, { isSpam: boolean; reportCount: number; lastReported: string | null; error?: string }>>({})
   const [checkingHealth, setCheckingHealth] = useState(false)
   const [isMuted, setIsMuted]         = useState(false)
@@ -198,25 +191,8 @@ export function CallingSession({ initialQueue }: Props) {
         const { token, callerId: cid, usageToday: usage, allUsage: all } = await res.json()
         if (destroyed) return
         setCallerId(cid)
-
-        // Merge DB values with localStorage cache — take the higher count
-        // so optimistic increments survive if the DB table isn't set up yet
-        const today = new Date().toISOString().slice(0, 10)
-        const dbAll: { number: string; count: number }[] = all ?? []
-        let cached: { number: string; count: number }[] = []
-        try {
-          const raw = localStorage.getItem(`dialUsage_${today}`)
-          cached = raw ? JSON.parse(raw) : []
-        } catch { /* ignore */ }
-        const merged = dbAll.map(d => {
-          const c = cached.find(x => x.number === d.number)
-          return { number: d.number, count: Math.max(d.count, c?.count ?? 0) }
-        })
-        // If DB returned nothing but we have a cache, use the cache
-        const final = merged.length > 0 ? merged : cached
-        setUsageToday(usage ?? final.find(n => n.number === cid)?.count ?? 0)
-        setAllUsage(final)
-        try { localStorage.setItem(`dialUsage_${today}`, JSON.stringify(final)) } catch { /* ignore */ }
+        setUsageToday(usage ?? 0)
+        setAllUsage(all ?? [])
         const device = new Device(token, { logLevel: 1, enableImprovedSignalingErrorPrecision: true })
         // Explicitly request echo cancellation + noise suppression on the mic
         // This is the #1 cause of echo in browser-based VoIP
@@ -276,14 +252,7 @@ export function CallingSession({ initialQueue }: Props) {
 
       // Optimistically increment local usage counter when call connects
       setUsageToday(u => u + 1)
-      setAllUsage(prev => {
-        const updated = prev.map(n => n.number === callerId ? { ...n, count: n.count + 1 } : n)
-        try {
-          const today = new Date().toISOString().slice(0, 10)
-          localStorage.setItem(`dialUsage_${today}`, JSON.stringify(updated))
-        } catch { /* ignore */ }
-        return updated
-      })
+      setAllUsage(prev => prev.map(n => n.number === callerId ? { ...n, count: n.count + 1 } : n))
 
       call.on('accept', () => {
         setCallStatus('connected')
