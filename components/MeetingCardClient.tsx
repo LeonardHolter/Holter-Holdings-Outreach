@@ -32,8 +32,17 @@ function Detail({ label, children }: { label: string; children: React.ReactNode 
 }
 
 export default function MeetingCardClient({ company: initial }: { company: Company }) {
-  const [c, setC]       = useState(initial)
+  const [c, setC]           = useState(initial)
   const [saving, setSaving] = useState(false)
+  const [copied, setCopied] = useState(false)
+
+  function copyForAndre() {
+    const text = `${c.company_name}: ${c.phone_number ?? '—'}${c.notes ? `, ${c.notes}` : ''}`
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
 
   const nextDate = c.next_reach_out ? parseISO(c.next_reach_out) : null
   const overdue  = nextDate && isPast(nextDate) && !isToday(nextDate)
@@ -90,12 +99,38 @@ export default function MeetingCardClient({ company: initial }: { company: Compa
             <span className="text-xs text-gray-500 font-medium uppercase tracking-wider">{c.state}</span>
           )}
         </div>
-        <span className="shrink-0 inline-flex items-center gap-1 px-2 py-1 bg-green-950/60 border border-green-800/50 rounded-full text-xs text-green-400 font-medium">
-          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-          </svg>
-          Intro wanted
-        </span>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={copyForAndre}
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-medium transition-all touch-manipulation ${
+              copied
+                ? 'bg-green-900/50 border-green-700 text-green-300'
+                : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white hover:border-gray-500'
+            }`}
+          >
+            {copied ? (
+              <>
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                </svg>
+                Copied
+              </>
+            ) : (
+              <>
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+                Copy
+              </>
+            )}
+          </button>
+          <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-950/60 border border-green-800/50 rounded-full text-xs text-green-400 font-medium">
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+            Intro wanted
+          </span>
+        </div>
       </div>
 
       {/* Details grid */}
