@@ -46,19 +46,18 @@ export function CallingSession({ initialQueue }: Props) {
   const [index, setIndex]             = useState(0)
   const [saving, setSaving]           = useState(false)
   const [done, setDone]               = useState(false)
-  const [sessionCaller, setSessionCallerState] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('sessionCaller') ?? ''
-    }
-    return ''
-  })
+  const [sessionCaller, setSessionCallerState] = useState('')
+
+  // Restore from localStorage after hydration (avoids SSR/client mismatch)
+  useEffect(() => {
+    const saved = localStorage.getItem('sessionCaller')
+    if (saved) setSessionCallerState(saved)
+  }, [])
 
   function setSessionCaller(name: string) {
     setSessionCallerState(name)
-    if (typeof window !== 'undefined') {
-      if (name) localStorage.setItem('sessionCaller', name)
-      else localStorage.removeItem('sessionCaller')
-    }
+    if (name) localStorage.setItem('sessionCaller', name)
+    else localStorage.removeItem('sessionCaller')
   }
 
   // Presence

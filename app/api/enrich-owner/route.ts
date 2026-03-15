@@ -6,6 +6,7 @@ export const maxDuration = 60
 export async function POST(request: NextRequest) {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) {
+    console.error('[enrich-owner] ANTHROPIC_API_KEY is not set')
     return NextResponse.json({ error: 'ANTHROPIC_API_KEY not set' }, { status: 500 })
   }
 
@@ -20,11 +21,11 @@ export async function POST(request: NextRequest) {
   try {
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 128,
-      tools: [{ type: 'web_search_20250305' as const, name: 'web_search' }],
+      max_tokens: 256,
+      tools: [{ type: 'web_search_20260209' as const, name: 'web_search' }],
       messages: [{
         role: 'user',
-        content: `who is the owner of ${companyName}${location}? Reply with ONLY the full name.`,
+        content: `Who is the owner of the garage door company "${companyName}"${location}? Reply with ONLY their full name, nothing else.`,
       }],
     })
 
@@ -49,6 +50,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ owner })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
+    console.error('[enrich-owner] Anthropic error:', msg)
     return NextResponse.json({ error: msg }, { status: 502 })
   }
 }
