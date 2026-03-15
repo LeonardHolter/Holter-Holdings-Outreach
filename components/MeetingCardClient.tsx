@@ -37,7 +37,10 @@ export default function MeetingCardClient({ company: initial }: { company: Compa
   const [copied, setCopied] = useState(false)
 
   function copyForAndre() {
-    const text = `${c.company_name}: ${c.phone_number ?? '—'}${c.notes ? `, ${c.notes}` : ''}`
+    const statePart = c.state ? ` (${c.state})` : ''
+    const ownerPart = c.owners_name ? `, Owner: ${c.owners_name}` : ''
+    const notesPart = c.notes ? `, ${c.notes}` : ''
+    const text = `${c.company_name}${statePart}: ${c.phone_number ?? '—'}${ownerPart}${notesPart}`
     navigator.clipboard.writeText(text).then(() => {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
