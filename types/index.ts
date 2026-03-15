@@ -20,6 +20,9 @@ export interface Company {
   calls_ellison: number
   total_dialed: number
   last_call_sid: string | null
+  andre_lead_given: boolean
+  andre_lead_date: string | null
+  andre_heard_back: string | null
   created_at: string
   updated_at: string
 }
