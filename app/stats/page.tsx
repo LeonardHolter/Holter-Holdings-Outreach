@@ -4,6 +4,11 @@ import { createClient } from '@/lib/supabase/server'
 import type { Company } from '@/types'
 import { Nav } from '@/components/Nav'
 
+interface RecordingRow {
+  called_by: string | null
+  duration_seconds: number | null
+}
+
 async function fetchAll(): Promise<Company[]> {
   const supabase = await createClient()
   const { data, error } = await supabase
@@ -13,8 +18,17 @@ async function fetchAll(): Promise<Company[]> {
   return (data as Company[]) ?? []
 }
 
+async function fetchRecordingStats(): Promise<RecordingRow[]> {
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from('call_recordings')
+    .select('called_by, duration_seconds')
+    .not('called_by', 'is', null)
+  return (data as RecordingRow[]) ?? []
+}
+
 export default async function StatsPage() {
-  const companies = await fetchAll()
+  const [companies, recordings] = await Promise.all([fetchAll(), fetchRecordingStats()])
 
   const total = companies.length
   const called = companies.filter(c => c.reach_out_response && c.reach_out_response !== 'Not called').length
@@ -67,6 +81,33 @@ export default async function StatsPage() {
       rate: ((introByCallerMap[name] ?? 0) / callCount) * 100,
     }))
     .sort((a, b) => b.rate - a.rate)
+
+  // Talk time analytics — per rep from call_recordings
+  const talkMap: Record<string, { recordedCalls: number; totalSeconds: number }> = {}
+  for (const r of recordings) {
+    const name = r.called_by!
+    if (!talkMap[name]) talkMap[name] = { recordedCalls: 0, totalSeconds: 0 }
+    talkMap[name].recordedCalls++
+    talkMap[name].totalSeconds += r.duration_seconds ?? 0
+  }
+  // Merge with dial attempt counts (from whoCalledMap = companies.who_called field)
+  const talkStats = Object.entries(talkMap)
+    .map(([name, { recordedCalls, totalSeconds }]) => ({
+      name,
+      recordedCalls,
+      totalSeconds,
+      dialAttempts: whoCalledMap[name] ?? 0,
+      avgSeconds: recordedCalls > 0 ? Math.round(totalSeconds / recordedCalls) : 0,
+    }))
+    .sort((a, b) => b.totalSeconds - a.totalSeconds)
+
+  const maxTalkSeconds = Math.max(...talkStats.map(s => s.totalSeconds), 1)
+
+  function fmtTime(s: number) {
+    if (s < 60) return `${s}s`
+    if (s < 3600) return `${Math.floor(s / 60)}m ${s % 60}s`
+    return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`
+  }
 
   // State breakdown
   const stateMap: Record<string, { total: number; called: number; intro: number }> = {}
@@ -174,6 +215,84 @@ export default async function StatsPage() {
           </div>
 
         </div>
+
+        {/* Talk Time Analytics */}
+        {talkStats.length > 0 && (
+          <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+            <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wide mb-1 flex items-center gap-2">
+              <span>🎙</span> Talk Time Analytics
+            </h2>
+            <p className="text-xs text-gray-600 mb-5">Actual conversation time from recorded calls vs. total dial attempts</p>
+
+            {/* Column headers */}
+            <div className="grid grid-cols-12 gap-2 text-xs text-gray-600 uppercase tracking-wide font-medium mb-3 px-1">
+              <span className="col-span-2">Rep</span>
+              <span className="col-span-4">Talk time</span>
+              <span className="col-span-2 text-right">Total</span>
+              <span className="col-span-2 text-right">Calls</span>
+              <span className="col-span-2 text-right">Avg/call</span>
+            </div>
+
+            <div className="space-y-4">
+              {talkStats.map(s => {
+                const pct = (s.totalSeconds / maxTalkSeconds) * 100
+                return (
+                  <div key={s.name} className="space-y-1.5">
+                    <div className="grid grid-cols-12 gap-2 items-center">
+                      <span className="col-span-2 text-sm font-medium text-white truncate">{s.name}</span>
+                      {/* Bar */}
+                      <div className="col-span-4 bg-gray-800 rounded-full h-2 overflow-hidden">
+                        <div
+                          className="h-2 rounded-full bg-teal-500 transition-all"
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                      <span className="col-span-2 text-sm font-bold tabular-nums text-teal-400 text-right">{fmtTime(s.totalSeconds)}</span>
+                      <span className="col-span-2 text-sm tabular-nums text-gray-400 text-right">{s.recordedCalls} rec.</span>
+                      <span className="col-span-2 text-sm tabular-nums text-gray-400 text-right">{fmtTime(s.avgSeconds)}</span>
+                    </div>
+                    {/* Dial attempt context */}
+                    {s.dialAttempts > 0 && (
+                      <div className="pl-[calc(16.666%+8px)] flex items-center gap-3 text-xs text-gray-600">
+                        <span>{s.dialAttempts} companies reached</span>
+                        <span>·</span>
+                        <span className={s.recordedCalls / Math.max(s.dialAttempts, 1) > 0.3 ? 'text-green-500' : 'text-gray-500'}>
+                          {((s.recordedCalls / Math.max(s.dialAttempts, 1)) * 100).toFixed(0)}% recording rate
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Summary row */}
+            <div className="mt-5 pt-4 border-t border-gray-800 flex flex-wrap gap-6">
+              <div>
+                <p className="text-xs text-gray-600 uppercase tracking-wide">Total talk time</p>
+                <p className="text-lg font-bold text-white tabular-nums mt-0.5">
+                  {fmtTime(talkStats.reduce((s, r) => s + r.totalSeconds, 0))}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-600 uppercase tracking-wide">Recorded calls</p>
+                <p className="text-lg font-bold text-white tabular-nums mt-0.5">
+                  {talkStats.reduce((s, r) => s + r.recordedCalls, 0)}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-600 uppercase tracking-wide">Overall avg</p>
+                <p className="text-lg font-bold text-white tabular-nums mt-0.5">
+                  {(() => {
+                    const total = talkStats.reduce((s, r) => s + r.totalSeconds, 0)
+                    const count = talkStats.reduce((s, r) => s + r.recordedCalls, 0)
+                    return fmtTime(count > 0 ? Math.round(total / count) : 0)
+                  })()}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
