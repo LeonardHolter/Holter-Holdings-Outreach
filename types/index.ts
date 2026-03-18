@@ -29,6 +29,14 @@ export interface Company {
   updated_at: string
 }
 
+export interface CompanyNote {
+  id: string
+  company_id: string
+  note: string
+  caller_name: string | null
+  created_at: string
+}
+
 export interface CallRecording {
   id: string
   company_id: string

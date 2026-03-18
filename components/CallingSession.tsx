@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
-import type { Company } from '@/types'
+import type { Company, CompanyNote } from '@/types'
 import { RESPONSE_STATUSES, TEAM_MEMBERS, STATES } from '@/types'
 import { createClient } from '@/lib/supabase/client'
 
@@ -122,6 +122,10 @@ export function CallingSession({ initialQueue }: Props) {
   const [state, setState]             = useState('')
   const [companyName, setCompanyName] = useState('')
   const [searchingOwner, setSearchingOwner] = useState(false)
+  const [originalNotes, setOriginalNotes]   = useState('')
+  const [noteHistory, setNoteHistory]       = useState<CompanyNote[]>([])
+  const [showHistory, setShowHistory]       = useState(false)
+  const [loadingHistory, setLoadingHistory] = useState(false)
 
   // Twilio
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -164,6 +168,7 @@ export function CallingSession({ initialQueue }: Props) {
   const loadCompany = useCallback((c: Company) => {
     setResponse(c.reach_out_response ?? '')
     setNotes(c.notes ?? '')
+    setOriginalNotes(c.notes ?? '')
     setOwnersName(c.owners_name ?? '')
     setPhoneNumber(c.phone_number ?? '')
     setEmailField(c.email ?? '')
@@ -176,8 +181,17 @@ export function CallingSession({ initialQueue }: Props) {
     setCallStatus('idle')
     setCallSid('')
     setDuration(0)
+    setNoteHistory([])
+    setShowHistory(false)
     const noOwner = !c.owners_name || c.owners_name === 'Not found'
     if (noOwner && c.company_name) lookupOwner(c.company_name, c.state ?? '')
+    // Fetch note history in background
+    setLoadingHistory(true)
+    fetch(`/api/companies/${c.id}/notes`)
+      .then(r => r.json())
+      .then((data: CompanyNote[]) => setNoteHistory(Array.isArray(data) ? data : []))
+      .catch(() => {})
+      .finally(() => setLoadingHistory(false))
   }, [lookupOwner])
 
   useState(() => { if (queue[0]) loadCompany(queue[0]) })
@@ -398,6 +412,16 @@ export function CallingSession({ initialQueue }: Props) {
       }
       const updated = await patchCompany(company.id, payload)
       setQueue(q => q.map(c => c.id === updated.id ? updated : c))
+
+      // Log note to history if it changed
+      if (!skip && notes.trim() && notes.trim() !== originalNotes.trim()) {
+        fetch(`/api/companies/${company.id}/notes`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ note: notes.trim(), caller_name: sessionCaller || null }),
+        }).catch(() => {})
+      }
+
       toast.success(skip ? 'Skipped' : 'Saved')
     } catch {
       toast.error('Failed to save')
@@ -706,12 +730,41 @@ export function CallingSession({ initialQueue }: Props) {
           </div>
 
           {/* Notes */}
-          <div className="px-4 sm:px-6 pb-4 sm:pb-5">
+          <div className="px-4 sm:px-6 pb-4 sm:pb-5 space-y-2">
             <Field label="Notes">
               <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
                 placeholder="Add notes…"
                 className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 resize-none" />
             </Field>
+
+            {/* Note history toggle */}
+            {(noteHistory.length > 0 || loadingHistory) && (
+              <button
+                onClick={() => setShowHistory(h => !h)}
+                className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-300 transition-colors"
+              >
+                <svg className={`w-3 h-3 transition-transform ${showHistory ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+                {loadingHistory ? 'Loading history…' : `${noteHistory.length} previous note${noteHistory.length !== 1 ? 's' : ''}`}
+              </button>
+            )}
+
+            {showHistory && noteHistory.length > 0 && (
+              <div className="space-y-2 border-l-2 border-gray-700 pl-3">
+                {noteHistory.map(n => (
+                  <div key={n.id} className="space-y-0.5">
+                    <div className="flex items-center gap-2 text-xs text-gray-500">
+                      <span className="font-medium text-gray-400">{n.caller_name ?? 'Unknown'}</span>
+                      <span>·</span>
+                      <span>{new Date(n.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                      <span>{new Date(n.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>
+                    </div>
+                    <p className="text-sm text-gray-300 whitespace-pre-wrap leading-relaxed">{n.note}</p>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Email */}
