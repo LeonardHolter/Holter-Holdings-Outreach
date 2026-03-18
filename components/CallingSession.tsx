@@ -29,6 +29,49 @@ async function patchCompany(id: string, payload: Partial<Company>): Promise<Comp
 }
 
 function todayStr() { return format(new Date(), 'yyyy-MM-dd') }
+
+const DAYS_OF_WEEK = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
+
+/**
+ * Returns true if this company's callback window is active right now.
+ * Window = matching day of week (if set) AND within 2 hours before/after callback_time (if set).
+ */
+function callbackMatchesNow(c: Company): boolean {
+  const now = new Date()
+  const todayName = DAYS_OF_WEEK[now.getDay()]
+  if (c.callback_day && c.callback_day !== todayName) return false
+  if (c.callback_time) {
+    const [h, m] = c.callback_time.split(':').map(Number)
+    const callbackMinutes = h * 60 + m
+    const nowMinutes = now.getHours() * 60 + now.getMinutes()
+    if (Math.abs(nowMinutes - callbackMinutes) > 120) return false
+  }
+  return !!(c.callback_day || c.callback_time)
+}
+
+/**
+ * Priority:
+ * 1. Not-yet-called  AND callback matches now
+ * 2. Not-yet-called  (no callback or not matching)
+ * 3. Previously-called AND callback matches now
+ * 4. Previously-called (oldest contact first)
+ */
+function sortQueueByCallback(q: Company[]): Company[] {
+  const score = (c: Company): number => {
+    const notCalled = c.reach_out_response === 'Not called' || !c.reach_out_response
+    const matches   = callbackMatchesNow(c)
+    if (notCalled && matches) return 0
+    if (notCalled)            return 1
+    if (matches)              return 2
+    return 3
+  }
+  return [...q].sort((a, b) => {
+    const sd = score(a) - score(b)
+    if (sd !== 0) return sd
+    // Within score 3 (previously called), keep oldest-first order
+    return 0
+  })
+}
 function twoWeeksStr() {
   const d = new Date(); d.setDate(d.getDate() + 14)
   return format(d, 'yyyy-MM-dd')
@@ -42,7 +85,7 @@ const SESSION_ID =
   typeof crypto !== 'undefined' ? crypto.randomUUID() : Math.random().toString(36).slice(2)
 
 export function CallingSession({ initialQueue }: Props) {
-  const [queue, setQueue]             = useState<Company[]>(initialQueue)
+  const [queue, setQueue]             = useState<Company[]>(() => sortQueueByCallback(initialQueue))
   const [index, setIndex]             = useState(0)
   const [saving, setSaving]           = useState(false)
   const [done, setDone]               = useState(false)
@@ -73,6 +116,9 @@ export function CallingSession({ initialQueue }: Props) {
   const [phoneNumber, setPhoneNumber] = useState('')
   const [emailField, setEmailField]   = useState('')
   const [showEmailInput, setShowEmailInput] = useState(false)
+  const [callbackDay, setCallbackDay]   = useState('')
+  const [callbackTime, setCallbackTime] = useState('')
+  const [showCallback, setShowCallback] = useState(false)
   const [state, setState]             = useState('')
   const [companyName, setCompanyName] = useState('')
   const [searchingOwner, setSearchingOwner] = useState(false)
@@ -122,6 +168,9 @@ export function CallingSession({ initialQueue }: Props) {
     setPhoneNumber(c.phone_number ?? '')
     setEmailField(c.email ?? '')
     setShowEmailInput(!!c.email)
+    setCallbackDay(c.callback_day ?? '')
+    setCallbackTime(c.callback_time ?? '')
+    setShowCallback(!!(c.callback_day || c.callback_time))
     setState(c.state ?? '')
     setCompanyName(c.company_name ?? '')
     setCallStatus('idle')
@@ -335,6 +384,8 @@ export function CallingSession({ initialQueue }: Props) {
         owners_name: ownersName || null,
         phone_number: phoneNumber || null,
         email: emailField || null,
+        callback_day: callbackDay || null,
+        callback_time: callbackTime || null,
         state: state || null,
         last_call_sid: callSid || company.last_call_sid,
       }
@@ -509,6 +560,14 @@ export function CallingSession({ initialQueue }: Props) {
             <input value={companyName} onChange={e => setCompanyName(e.target.value)}
               className="mt-1 w-full bg-transparent text-xl sm:text-2xl font-bold text-white focus:outline-none border-b border-transparent focus:border-gray-600 pb-1 transition-colors"
               placeholder="Company name" />
+            {company && callbackMatchesNow(company) && (
+              <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-yellow-900/50 border border-yellow-700/60 text-yellow-300 text-xs font-medium">
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Callback window{company.callback_day ? ` · ${company.callback_day}` : ''}{company.callback_time ? ` ${company.callback_time.slice(0,5)}` : ''}
+              </div>
+            )}
           </div>
 
           <div className="px-4 sm:px-6 py-4 sm:py-5 grid grid-cols-2 gap-3 sm:gap-5">
@@ -689,6 +748,51 @@ export function CallingSession({ initialQueue }: Props) {
                       </svg>
                     </button>
                   )}
+                </div>
+              </Field>
+            )}
+          </div>
+
+          {/* Callback time */}
+          <div className="px-4 sm:px-6 pb-4 sm:pb-5">
+            {!showCallback ? (
+              <button
+                onClick={() => setShowCallback(true)}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed border-gray-600 text-sm text-gray-400 hover:border-yellow-500 hover:text-yellow-400 transition-colors touch-manipulation w-full"
+              >
+                <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Best callback time — tap to set
+              </button>
+            ) : (
+              <Field label="Best Callback Time">
+                <div className="flex gap-2 flex-wrap">
+                  <select
+                    value={callbackDay}
+                    onChange={e => setCallbackDay(e.target.value)}
+                    className="flex-1 min-w-[120px] bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-yellow-500"
+                  >
+                    <option value="">Any day</option>
+                    {['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].map(d => (
+                      <option key={d} value={d}>{d}</option>
+                    ))}
+                  </select>
+                  <input
+                    type="time"
+                    value={callbackTime}
+                    onChange={e => setCallbackTime(e.target.value)}
+                    className="flex-1 min-w-[120px] bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-yellow-500"
+                  />
+                  <button
+                    onClick={() => { setCallbackDay(''); setCallbackTime(''); setShowCallback(false) }}
+                    className="px-2 text-gray-600 hover:text-gray-400 transition-colors"
+                    title="Clear"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
                 </div>
               </Field>
             )}

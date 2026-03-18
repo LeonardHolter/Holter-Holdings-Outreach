@@ -23,6 +23,8 @@ export interface Company {
   andre_lead_given: boolean
   andre_lead_date: string | null
   andre_heard_back: string | null
+  callback_day: string | null
+  callback_time: string | null
   created_at: string
   updated_at: string
 }
