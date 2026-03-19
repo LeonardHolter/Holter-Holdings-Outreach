@@ -1,9 +1,8 @@
 export const dynamic = 'force-dynamic'
 
 import { createClient } from '@/lib/supabase/server'
-import { format, parseISO } from 'date-fns'
-import RecordingsPlayer from '@/components/RecordingsPlayer'
 import { Nav } from '@/components/Nav'
+import CallerSection from '@/components/CallerSection'
 
 interface RecordingRow {
   id: string
@@ -24,7 +23,6 @@ async function fetchRecordings(): Promise<RecordingRow[]> {
     .not('recording_url', 'is', null)
     .order('called_at', { ascending: false })
     .limit(500)
-  // Supabase returns companies as an array from the join; normalise to single object
   return ((data ?? []) as unknown[]).map((r: unknown) => {
     const row = r as RecordingRow & { companies: RecordingRow['companies'] | RecordingRow['companies'][] }
     return {
@@ -34,16 +32,16 @@ async function fetchRecordings(): Promise<RecordingRow[]> {
   })
 }
 
-function fmtDuration(s: number | null) {
-  if (!s) return null
-  const m = Math.floor(s / 60), sec = s % 60
-  return `${m}:${sec.toString().padStart(2, '0')}`
+function fmtTalkTime(s: number): string {
+  if (s < 60) return `${s}s`
+  if (s < 3600) return `${Math.floor(s / 60)}m ${s % 60}s`
+  return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`
 }
 
 export default async function RecordingsPage() {
   const rows = await fetchRecordings()
 
-  // Group by caller (called_by), fall back to caller_name, then "Unknown"
+  // Group by caller
   const grouped: Record<string, RecordingRow[]> = {}
   for (const r of rows) {
     const key = r.called_by ?? r.caller_name ?? 'Unknown'
@@ -51,75 +49,89 @@ export default async function RecordingsPage() {
     grouped[key].push(r)
   }
 
-  const callers = Object.keys(grouped).sort()
+  // Sort callers by recording count descending
+  const callers = Object.keys(grouped).sort((a, b) => grouped[b].length - grouped[a].length)
+
+  const totalSeconds = rows.reduce((s, r) => s + (r.duration_seconds ?? 0), 0)
+  const totalWithDuration = rows.filter(r => r.duration_seconds && r.duration_seconds > 0).length
+  const avgSeconds = totalWithDuration > 0 ? Math.round(totalSeconds / totalWithDuration) : 0
+
+  function fmtAvg(s: number) {
+    if (s < 60) return `${s}s`
+    return `${Math.floor(s / 60)}m ${s % 60}s`
+  }
 
   return (
     <div className="flex flex-col min-h-[100dvh] bg-gray-950">
       <Nav />
 
-      <main className="flex-1 max-w-4xl w-full mx-auto px-4 py-8 space-y-8">
-        <div>
-          <h1 className="text-2xl font-bold text-white">Recordings</h1>
-          <p className="text-gray-500 text-sm mt-1">{rows.length} recording{rows.length !== 1 ? 's' : ''} total</p>
+      <main className="flex-1 max-w-3xl w-full mx-auto px-4 sm:px-6 py-8 space-y-8">
+
+        {/* Page header */}
+        <div className="space-y-4">
+          <div>
+            <h1 className="text-2xl font-bold text-white">Call Recordings</h1>
+            <p className="text-gray-500 text-sm mt-1">
+              {rows.length} recording{rows.length !== 1 ? 's' : ''} across {callers.length} caller{callers.length !== 1 ? 's' : ''}
+            </p>
+          </div>
+
+          {/* Summary stats */}
+          {rows.length > 0 && (
+            <div className="grid grid-cols-3 gap-3">
+              <Stat label="Total recordings" value={rows.length.toString()} />
+              <Stat label="Total talk time"  value={fmtTalkTime(totalSeconds)} />
+              <Stat label="Avg call length"  value={avgSeconds > 0 ? fmtAvg(avgSeconds) : '—'} />
+            </div>
+          )}
         </div>
 
+        {/* Empty state */}
         {callers.length === 0 && (
-          <div className="text-center py-20 text-gray-600">
-            <p className="text-lg">No recordings yet.</p>
-            <p className="text-sm mt-1">Recordings appear here after calls end (may take 30–60 s).</p>
+          <div className="text-center py-24 text-gray-600">
+            <div className="text-4xl mb-4">🎙</div>
+            <p className="text-lg font-medium text-gray-500">No recordings yet</p>
+            <p className="text-sm mt-2">Recordings appear 30–60 s after a call ends.</p>
           </div>
         )}
 
-        {callers.map(caller => (
-          <section key={caller}>
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-8 h-8 rounded-full bg-blue-900/50 border border-blue-700/50 flex items-center justify-center text-sm font-bold text-blue-300">
-                {caller[0]?.toUpperCase() ?? '?'}
-              </div>
-              <div>
-                <h2 className="text-white font-semibold">{caller}</h2>
-                <p className="text-gray-500 text-xs">{grouped[caller].length} recording{grouped[caller].length !== 1 ? 's' : ''}</p>
-              </div>
-            </div>
+        {/* Caller sections */}
+        {callers.map(caller => {
+          const callerRows = grouped[caller]
+          const callerSeconds = callerRows.reduce((s, r) => s + (r.duration_seconds ?? 0), 0)
 
-            <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden divide-y divide-gray-800">
-              {grouped[caller].map(r => {
-                const company = r.companies
-                const streamUrl = r.recording_url
-                  ? `/api/twilio/recordings/stream?url=${encodeURIComponent(r.recording_url)}`
-                  : null
+          const recordings = callerRows.map(r => ({
+            id: r.id,
+            company_name: r.companies?.company_name ?? null,
+            state: r.companies?.state ?? null,
+            called_at: r.called_at,
+            duration_seconds: r.duration_seconds,
+            streamUrl: r.recording_url
+              ? `/api/twilio/recordings/stream?url=${encodeURIComponent(r.recording_url)}`
+              : null,
+          }))
 
-                return (
-                  <div key={r.id} className="px-4 py-4 space-y-3">
-                    {/* Company info row */}
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="text-white text-sm font-semibold truncate">
-                          {company?.company_name ?? 'Unknown company'}
-                          {company?.state && (
-                            <span className="text-gray-500 font-normal ml-1.5">{company.state}</span>
-                          )}
-                        </p>
-                        <p className="text-gray-500 text-xs mt-0.5">
-                          {format(parseISO(r.called_at), 'MMM d, yyyy · h:mm a')}
-                        </p>
-                      </div>
-                      {fmtDuration(r.duration_seconds) && (
-                        <span className="shrink-0 text-xs text-gray-500 bg-gray-800 px-2 py-0.5 rounded-full tabular-nums">
-                          {fmtDuration(r.duration_seconds)}
-                        </span>
-                      )}
-                    </div>
+          return (
+            <CallerSection
+              key={caller}
+              caller={caller}
+              recordings={recordings}
+              totalSeconds={callerSeconds}
+              color=""
+            />
+          )
+        })}
 
-                    {/* Audio player — full width */}
-                    {streamUrl && <RecordingsPlayer src={streamUrl} />}
-                  </div>
-                )
-              })}
-            </div>
-          </section>
-        ))}
       </main>
+    </div>
+  )
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="bg-gray-900 border border-gray-800 rounded-xl px-4 py-3">
+      <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">{label}</p>
+      <p className="text-xl font-bold text-white tabular-nums mt-1">{value}</p>
     </div>
   )
 }
