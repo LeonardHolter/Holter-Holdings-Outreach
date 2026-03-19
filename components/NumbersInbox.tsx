@@ -327,10 +327,30 @@ function CallsTab({ numbers, calls }: { numbers: string[]; calls: InboundCall[] 
 
 // ── Main component ────────────────────────────────────────────────────────────
 
+// ── Browser notification helper ───────────────────────────────────────────────
+
+function pushNotification(title: string, body?: string) {
+  if (typeof window === 'undefined') return
+  if (Notification.permission === 'granted') {
+    new Notification(title, { body, icon: '/favicon.ico', tag: title })
+  }
+}
+
 export default function NumbersInbox({ numbers, initialMessages, initialCalls }: Props) {
   const [tab, setTab]           = useState<'messages' | 'calls'>('messages')
   const [messages, setMessages] = useState<InboundMessage[]>(initialMessages)
   const [calls,    setCalls]    = useState<InboundCall[]>(initialCalls)
+  // Initialise lazily so we read Notification.permission only on the client
+  const [notifPerm, setNotifPerm] = useState<NotificationPermission>(() => {
+    if (typeof window === 'undefined' || !('Notification' in window)) return 'default'
+    return Notification.permission
+  })
+
+  // If still default, prompt automatically once
+  useEffect(() => {
+    if (notifPerm !== 'default') return
+    Notification.requestPermission().then(p => setNotifPerm(p))
+  }, [notifPerm])
 
   // Real-time: subscribe to new incoming_messages and incoming_calls
   useEffect(() => {
@@ -347,6 +367,7 @@ export default function NumbersInbox({ numbers, initialMessages, initialCalls }:
           })
           if (m.direction === 'inbound') {
             toast(`New text from ${fmtNumber(m.from_number)}`, { description: m.body ?? '' })
+            pushNotification(`💬 Text from ${fmtNumber(m.from_number)}`, m.body ?? '')
           }
         }
       )
@@ -362,6 +383,7 @@ export default function NumbersInbox({ numbers, initialMessages, initialCalls }:
             return [c, ...prev]
           })
           toast(`📞 Incoming call from ${fmtNumber(c.from_number)}`)
+          pushNotification(`📞 Incoming call`, fmtNumber(c.from_number))
         }
       )
       .subscribe()
@@ -388,8 +410,34 @@ export default function NumbersInbox({ numbers, initialMessages, initialCalls }:
 
   const unreadCount = messages.filter(m => m.direction === 'inbound').length
 
+  async function requestNotifPermission() {
+    const p = await Notification.requestPermission()
+    setNotifPerm(p)
+  }
+
   return (
     <div className="space-y-4">
+
+      {/* Notification permission nudge */}
+      {notifPerm === 'default' && (
+        <button
+          onClick={requestNotifPermission}
+          className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-yellow-800/60 bg-yellow-950/30 text-yellow-300 text-sm hover:bg-yellow-950/50 transition-colors text-left"
+        >
+          <span className="text-xl shrink-0">🔔</span>
+          <span className="flex-1">
+            <span className="font-medium">Enable notifications</span>
+            <span className="text-yellow-500 font-normal ml-1.5">— get alerted for new texts and calls even when this tab is in the background</span>
+          </span>
+        </button>
+      )}
+      {notifPerm === 'denied' && (
+        <div className="flex items-center gap-3 px-4 py-3 rounded-xl border border-gray-800 bg-gray-900 text-gray-500 text-sm">
+          <span className="text-xl shrink-0">🔕</span>
+          <span>Notifications blocked. To enable, click the lock icon in your browser address bar and allow notifications for this site.</span>
+        </div>
+      )}
+
       {/* Tab bar */}
       <div className="flex gap-1 bg-gray-900 border border-gray-800 rounded-xl p-1 w-fit">
         <button
