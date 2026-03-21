@@ -17,6 +17,7 @@ interface PresencePayload {
 }
 
 type CallStatus = 'idle' | 'connecting' | 'connected' | 'ended'
+type IncomingCallState = { call: unknown; from: string } | null
 
 async function patchCompany(id: string, payload: Partial<Company>): Promise<Company> {
   const res = await fetch(`/api/companies/${id}`, {
@@ -146,6 +147,7 @@ export function CallingSession({ initialQueue }: Props) {
   const [deviceReady, setDeviceReady] = useState(false)
   const [showDialpad, setShowDialpad] = useState(false)
   const [dialpadInput, setDialpadInput] = useState('')
+  const [incomingCall, setIncomingCall] = useState<IncomingCallState>(null)
 
 
   const company = queue[index]
@@ -272,6 +274,17 @@ export function CallingSession({ initialQueue }: Props) {
         }
         device.on('error', (err: Error) => toast.error(`Twilio: ${err.message}`))
         await device.register()
+
+        // ── Inbound call handler ──────────────────────────────────
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        device.on('incoming', (call: any) => {
+          // If already in a call, auto-reject
+          if (activeCallRef.current) { call.reject(); return }
+          const from = call.parameters?.From ?? 'Unknown'
+          setIncomingCall({ call, from })
+          // Clear the overlay if the caller hangs up before we answer
+          call.on('cancel', () => setIncomingCall(null))
+        })
         if (!destroyed) { deviceRef.current = device; setDeviceReady(true) }
       } catch (err) {
         console.warn('Twilio init failed:', err)
@@ -350,8 +363,43 @@ export function CallingSession({ initialQueue }: Props) {
     }
   }
 
-  async function checkNumberHealth() {
-    setCheckingHealth(true)
+  // ── Inbound call accept / reject ────────────────────────────
+  function handleAcceptIncoming() {
+    if (!incomingCall) return
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const call = incomingCall.call as any
+    // Wire events BEFORE accepting
+    call.on('accept', () => {
+      setCallStatus('connected')
+      const sid = call.parameters?.CallSid ?? ''
+      setCallSid(sid)
+      timerRef.current = setInterval(() => setDuration(d => d + 1), 1000)
+    })
+    call.on('disconnect', () => {
+      clearInterval(timerRef.current!)
+      setCallStatus('ended')
+      activeCallRef.current = null
+    })
+    call.on('error', (err: Error) => {
+      clearInterval(timerRef.current!)
+      setCallStatus('idle')
+      activeCallRef.current = null
+      toast.error(`Call error: ${err.message}`)
+    })
+    activeCallRef.current = call
+    setCallStatus('connecting')
+    setDuration(0)
+    setIncomingCall(null)
+    call.accept()
+  }
+
+  function handleRejectIncoming() {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ;(incomingCall?.call as any)?.reject()
+    setIncomingCall(null)
+  }
+
+  async function checkNumberHealth() {    setCheckingHealth(true)
     try {
       const res = await fetch('/api/number-health')
       if (!res.ok) { toast.error('Health check failed'); return }
@@ -467,6 +515,57 @@ export function CallingSession({ initialQueue }: Props) {
 
   return (
     <div className="flex-1 overflow-y-auto flex flex-col items-center justify-start py-4 sm:py-8 px-3 sm:px-4 pb-safe">
+
+      {/* ── Incoming call overlay ── */}
+      {incomingCall && (
+        <div className="fixed inset-x-0 top-0 z-50 flex justify-center px-4 pt-4 pointer-events-none">
+          <div className="w-full max-w-sm pointer-events-auto">
+            <div className="bg-gray-900 border-2 border-green-600 rounded-2xl shadow-2xl shadow-green-900/40 overflow-hidden animate-bounce-in">
+              {/* Pulsing top bar */}
+              <div className="h-1 bg-green-500 animate-pulse" />
+              <div className="px-5 py-4">
+                <div className="flex items-center gap-3 mb-4">
+                  {/* Ringing icon */}
+                  <div className="relative shrink-0">
+                    <div className="w-12 h-12 rounded-full bg-green-900/50 border border-green-700 flex items-center justify-center">
+                      <svg className="w-6 h-6 text-green-400 animate-pulse" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/>
+                      </svg>
+                    </div>
+                    <span className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full animate-ping" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-green-400 font-medium uppercase tracking-wide">Incoming call</p>
+                    <p className="text-white font-bold text-lg truncate">{incomingCall.from}</p>
+                  </div>
+                </div>
+                {/* Accept / Decline */}
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={handleRejectIncoming}
+                    className="flex items-center justify-center gap-2 py-3 rounded-xl bg-red-900/60 border border-red-700 text-red-300 font-semibold text-sm hover:bg-red-900/80 transition-colors touch-manipulation"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 8l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M5 3a16.003 16.003 0 0114 14m-1.34-3.34l-2.12-.36a2 2 0 00-1.9.7L12.5 15.5A15.045 15.045 0 018.5 11.5l1.47-2.07a2 2 0 00.7-1.9l-.36-2.12A2 2 0 008.35 3.5H5.5a2 2 0 00-2 2C3.5 14.314 9.686 20.5 18.5 20.5a2 2 0 002-2v-2.84a2 2 0 00-1.66-1.98z" />
+                    </svg>
+                    Decline
+                  </button>
+                  <button
+                    onClick={handleAcceptIncoming}
+                    className="flex items-center justify-center gap-2 py-3 rounded-xl bg-green-700 hover:bg-green-600 border border-green-600 text-white font-semibold text-sm transition-colors touch-manipulation"
+                  >
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/>
+                    </svg>
+                    Accept
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="w-full max-w-2xl space-y-3 sm:space-y-4">
 
         {/* Active callers */}

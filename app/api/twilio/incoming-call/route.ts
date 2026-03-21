@@ -4,14 +4,19 @@ import { createClient } from '@/lib/supabase/server'
 
 const VoiceResponse = twilio.twiml.VoiceResponse
 
+// Known agent identities — must match what /api/twilio/token generates
+// (callerName.replace(/\s+/g, '-').toLowerCase())
+const AGENT_IDENTITIES = ['leonard', 'tommaso', 'john', 'sunzim', 'daniel', 'ellison']
+
 // Twilio posts here when one of our numbers receives an inbound call.
-// We log it, then either forward to TWILIO_FORWARD_NUMBER or play a message.
+// Simultaneously rings ALL registered browser clients — first to answer gets the call.
+// Falls back to a voicemail message if nobody picks up within the timeout.
 export async function POST(request: NextRequest) {
   const form = await request.formData()
 
-  const callSid = form.get('CallSid') as string | null
-  const from    = form.get('From')    as string | null
-  const to      = form.get('To')      as string | null
+  const callSid = form.get('CallSid')    as string | null
+  const from    = form.get('From')       as string | null
+  const to      = form.get('To')         as string | null
   const status  = form.get('CallStatus') as string | null
 
   if (from && to) {
@@ -22,22 +27,22 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  const twiml   = new VoiceResponse()
-  const forward = process.env.TWILIO_FORWARD_NUMBER?.trim()
+  const twiml = new VoiceResponse()
 
-  if (forward) {
-    // Forward the call to a physical phone number
-    const dial = twiml.dial({ callerId: to ?? undefined })
-    dial.number(forward)
-  } else {
-    // No forwarding configured — play a brief message and hang up
-    twiml.say(
-      { voice: 'Polly.Joanna', language: 'en-US' },
-      "Thanks for calling. We're not available right now — please leave a message after the tone or call back later."
-    )
-    twiml.record({ maxLength: 120, playBeep: true })
-    twiml.hangup()
+  // Ring all browser clients simultaneously (30 s timeout).
+  // Twilio connects the call to whichever agent answers first.
+  const dial = twiml.dial({ timeout: 30 })
+  for (const identity of AGENT_IDENTITIES) {
+    dial.client(identity)
   }
+
+  // If nobody answers, play a voicemail prompt
+  twiml.say(
+    { voice: 'Polly.Joanna', language: 'en-US' },
+    "Hi, thanks for calling. No one is available right now — please leave a message after the tone."
+  )
+  twiml.record({ maxLength: 120, playBeep: true })
+  twiml.hangup()
 
   return new NextResponse(twiml.toString(), {
     headers: { 'Content-Type': 'text/xml' },

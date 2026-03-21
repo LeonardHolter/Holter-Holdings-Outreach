@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }
 
-  const grant = new VoiceGrant({ outgoingApplicationSid: twimlAppSid, incomingAllow: false })
+  const grant = new VoiceGrant({ outgoingApplicationSid: twimlAppSid, incomingAllow: true })
   const token = new AccessToken(accountSid, apiKey, apiSecret, { identity, ttl: 3600 })
   token.addGrant(grant)
 
