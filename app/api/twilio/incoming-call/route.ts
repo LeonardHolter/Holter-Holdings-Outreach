@@ -4,13 +4,15 @@ import { createClient } from '@/lib/supabase/server'
 
 const VoiceResponse = twilio.twiml.VoiceResponse
 
-// Known agent identities — must match what /api/twilio/token generates
-// (callerName.replace(/\s+/g, '-').toLowerCase())
+// Known agent browser-client identities (must match token identity format)
 const AGENT_IDENTITIES = ['leonard', 'tommaso', 'john', 'sunzim', 'daniel', 'ellison']
 
 // Twilio posts here when one of our numbers receives an inbound call.
-// Simultaneously rings ALL registered browser clients — first to answer gets the call.
-// Falls back to a voicemail message if nobody picks up within the timeout.
+//
+// Strategy — Option B (browser first, phones as fallback):
+//   1. Ring all browser clients for 15 s — first to click Accept wins
+//   2. If nobody answered, ring all personal phones simultaneously for 30 s
+//   3. Still no answer → voicemail
 export async function POST(request: NextRequest) {
   const form = await request.formData()
 
@@ -27,16 +29,27 @@ export async function POST(request: NextRequest) {
     )
   }
 
+  // Personal fallback numbers (comma-separated in TWILIO_FORWARD_NUMBER)
+  const forwardNumbers = (process.env.TWILIO_FORWARD_NUMBER ?? '')
+    .split(',').map(n => n.trim()).filter(Boolean)
+
   const twiml = new VoiceResponse()
 
-  // Ring all browser clients simultaneously (30 s timeout).
-  // Twilio connects the call to whichever agent answers first.
-  const dial = twiml.dial({ timeout: 30 })
+  // ── Step 1: ring browser clients (15 s) ──────────────────────────────────
+  const browserDial = twiml.dial({ timeout: 15 })
   for (const identity of AGENT_IDENTITIES) {
-    dial.client(identity)
+    browserDial.client(identity)
   }
 
-  // If nobody answers, play a voicemail prompt
+  // ── Step 2: ring personal phones (30 s) ──────────────────────────────────
+  if (forwardNumbers.length > 0) {
+    const phoneDial = twiml.dial({ timeout: 30, callerId: to ?? undefined })
+    for (const num of forwardNumbers) {
+      phoneDial.number(num)
+    }
+  }
+
+  // ── Step 3: voicemail ─────────────────────────────────────────────────────
   twiml.say(
     { voice: 'Polly.Joanna', language: 'en-US' },
     "Hi, thanks for calling. No one is available right now — please leave a message after the tone."
