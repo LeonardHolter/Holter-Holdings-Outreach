@@ -13,15 +13,14 @@ Extract the following fields and return ONLY a valid JSON object — no markdown
   "company_name": string,          // Full business name
   "phone_number": string | null,   // Digits only, e.g. "7402893925"
   "state": string | null,          // 2-letter US state code, e.g. "OH"
-  "google_reviews": number | null, // Review COUNT (the number in parentheses), not the star rating
-  "notes": string | null           // Any extra useful info (address, website, hours) in one line
+  "google_reviews": number | null  // Review COUNT (the number in parentheses), not the star rating
 }
 
 Rules:
 - phone_number: strip all non-digits. If not present, return null.
 - state: extract from the address line. Return the 2-letter code only.
 - google_reviews: this is the INTEGER count inside parentheses, e.g. "(8)" → 8. NOT the star rating.
-- notes: include the website and full address if present. Keep it short.
+- Do NOT include a notes field.
 - If a field is not found, return null for that field.`
 
 export async function POST(request: NextRequest) {
@@ -37,7 +36,6 @@ export async function POST(request: NextRequest) {
     phone_number: string | null
     state: string | null
     google_reviews: number | null
-    notes: string | null
   }
 
   try {
@@ -71,7 +69,6 @@ export async function POST(request: NextRequest) {
       phone_number:   parsed.phone_number,
       state:          parsed.state,
       google_reviews: parsed.google_reviews,
-      notes:          parsed.notes,
       reach_out_response: null,
     })
     .select()

@@ -8,7 +8,6 @@ interface ParsedCompany {
   phone_number: string | null
   state: string | null
   google_reviews: number | null
-  notes: string | null
 }
 
 interface Message {
@@ -49,9 +48,6 @@ function CompanyCard({ company }: { company: ParsedCompany & { id: string } }) {
           </div>
         )}
       </div>
-      {company.notes && (
-        <p className="text-xs text-gray-500 leading-relaxed">{company.notes}</p>
-      )}
       <a
         href={`/?search=${encodeURIComponent(company.company_name)}`}
         className="inline-flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 transition-colors"
