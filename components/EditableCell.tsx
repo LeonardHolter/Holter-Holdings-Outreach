@@ -51,7 +51,11 @@ export function EditableCell({ value, type, onSave, className = '' }: EditableCe
   useEffect(() => {
     if (editing && inputRef.current) {
       inputRef.current.focus()
-      if (inputRef.current instanceof HTMLInputElement || inputRef.current instanceof HTMLTextAreaElement) {
+      // setSelectionRange is not supported on type="number" inputs
+      if (
+        (inputRef.current instanceof HTMLInputElement && inputRef.current.type !== 'number') ||
+        inputRef.current instanceof HTMLTextAreaElement
+      ) {
         const len = inputRef.current.value.length
         inputRef.current.setSelectionRange(len, len)
       }
