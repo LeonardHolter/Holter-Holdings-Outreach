@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { Toaster } from 'sonner'
 import IncomingCallListener from '@/components/IncomingCallListener'
+import { Suspense } from 'react'
 import './globals.css'
 
 const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] })
@@ -23,7 +24,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className="dark">
       <body className={`${geistSans.variable} ${geistMono.variable} bg-gray-950 text-gray-100 antialiased`}>
         {children}
-        <IncomingCallListener />
+        <Suspense fallback={null}>
+          <IncomingCallListener />
+        </Suspense>
         <Toaster
           theme="dark"
           position="bottom-right"
