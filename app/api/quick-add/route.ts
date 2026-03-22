@@ -47,9 +47,10 @@ export async function POST(request: NextRequest) {
     })
 
     const raw = msg.content[0].type === 'text' ? msg.content[0].text.trim() : ''
-    // Strip any accidental markdown fences
-    const clean = raw.replace(/^```[a-z]*\n?/i, '').replace(/```$/i, '').trim()
-    parsed = JSON.parse(clean)
+    // Extract the JSON object from wherever it appears in the response
+    const jsonMatch = raw.match(/\{[\s\S]*\}/)
+    if (!jsonMatch) throw new Error(`No JSON object found in Claude response: ${raw.slice(0, 200)}`)
+    parsed = JSON.parse(jsonMatch[0])
   } catch (err) {
     console.error('[quick-add] Claude parse error:', err)
     return NextResponse.json({ error: 'Failed to parse company info from text' }, { status: 422 })
