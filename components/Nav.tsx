@@ -6,6 +6,7 @@ const LINKS = [
   { href: '/',            label: 'Pipeline'   },
   { href: '/call',        label: 'Calling'    },
   { href: '/meetings',    label: 'Meetings'   },
+  { href: '/quick-add',   label: 'Quick Add'  },
   { href: '/stats',       label: 'Stats'      },
   { href: '/recordings',  label: 'Recordings' },
   { href: '/numbers',     label: 'Numbers'    },
