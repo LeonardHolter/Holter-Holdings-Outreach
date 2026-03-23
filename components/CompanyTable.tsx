@@ -77,6 +77,172 @@ function buildDupeMap(rows: Company[]): Map<string, DupeInfo> {
   return map
 }
 
+// ── Dedupe modal ──────────────────────────────────────────────
+
+interface DupeGroup {
+  key: string         // "name||phone"
+  ids: string[]
+}
+
+function buildDupeGroups(rows: Company[]): DupeGroup[] {
+  const byKey = new Map<string, string[]>()
+  for (const r of rows) {
+    const phone = r.phone_number ? r.phone_number.replace(/\D/g, '') : ''
+    if (!phone) continue
+    const key = `${r.company_name.trim().toLowerCase()}||${phone}`
+    if (!byKey.has(key)) byKey.set(key, [])
+    byKey.get(key)!.push(r.id)
+  }
+  const groups: DupeGroup[] = []
+  for (const [key, ids] of byKey) {
+    if (ids.length >= 2) groups.push({ key, ids })
+  }
+  return groups
+}
+
+function scoreCompany(c: Company): number {
+  // Higher = more data = better to keep
+  return (
+    (c.amount_of_calls ?? 0) * 3 +
+    (c.owners_name ? 2 : 0) +
+    (c.notes ? 1 : 0) +
+    (c.email ? 1 : 0) +
+    (c.reach_out_response && c.reach_out_response !== 'Not called' ? 2 : 0)
+  )
+}
+
+interface DedupeModalProps {
+  data: Company[]
+  onClose: () => void
+  onDeleted: (deletedId: string) => void
+}
+
+function DedupeModal({ data, onClose, onDeleted }: DedupeModalProps) {
+  const groups = useMemo(() => buildDupeGroups(data), [data])
+  const byId = useMemo(() => new Map(data.map(c => [c.id, c])), [data])
+  const [deleting, setDeleting] = useState<string | null>(null)
+
+  async function handleDelete(id: string) {
+    setDeleting(id)
+    try {
+      await deleteCompanyReq(id)
+      onDeleted(id)
+      toast.success('Duplicate removed')
+    } catch {
+      toast.error('Failed to delete')
+    } finally {
+      setDeleting(null)
+    }
+  }
+
+  // Filter to groups that still exist in data (after deletions)
+  const activeGroups = groups.filter(g => g.ids.filter(id => byId.has(id)).length >= 2)
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/70" onClick={onClose} />
+      <div className="relative bg-gray-950 border border-gray-800 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800 shrink-0">
+          <div>
+            <h2 className="text-white font-semibold text-lg">Remove Duplicates</h2>
+            <p className="text-gray-500 text-sm mt-0.5">
+              {activeGroups.length} group{activeGroups.length !== 1 ? 's' : ''} of duplicates — keep the best one, delete the rest
+            </p>
+          </div>
+          <button onClick={onClose} className="text-gray-500 hover:text-white transition-colors p-1">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="overflow-y-auto flex-1 p-4 space-y-4">
+          {activeGroups.length === 0 && (
+            <div className="text-center py-10 text-green-400">
+              <svg className="w-10 h-10 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+              <p className="font-medium">All clean! No more duplicates.</p>
+            </div>
+          )}
+          {activeGroups.map(group => {
+            const companies = group.ids.map(id => byId.get(id)).filter(Boolean) as Company[]
+            const sorted = [...companies].sort((a, b) => scoreCompany(b) - scoreCompany(a))
+            const keepId = sorted[0]?.id
+
+            return (
+              <div key={group.key} className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+                <div className="px-4 py-2 border-b border-gray-800 bg-gray-900/80">
+                  <p className="text-xs text-orange-400 font-semibold uppercase tracking-wide">Duplicate group</p>
+                  <p className="text-white font-medium text-sm mt-0.5">{sorted[0]?.company_name}</p>
+                </div>
+                <div className="divide-y divide-gray-800">
+                  {sorted.map((c, idx) => {
+                    const isKeep = c.id === keepId
+                    return (
+                      <div key={c.id} className={`flex items-start gap-3 px-4 py-3 ${isKeep ? 'bg-green-950/20' : ''}`}>
+                        <div className="flex-1 min-w-0 space-y-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {isKeep
+                              ? <span className="text-xs bg-green-900/60 border border-green-700/50 text-green-400 px-2 py-0.5 rounded-full font-medium">Recommended to keep</span>
+                              : <span className="text-xs bg-gray-800 border border-gray-700 text-gray-400 px-2 py-0.5 rounded-full font-medium">#{idx + 1}</span>
+                            }
+                          </div>
+                          <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs mt-1.5">
+                            <span className="text-gray-500">Phone</span>
+                            <span className="text-gray-300 font-mono">{c.phone_number ?? '—'}</span>
+                            <span className="text-gray-500">State</span>
+                            <span className="text-gray-300">{c.state ?? '—'}</span>
+                            <span className="text-gray-500">Calls made</span>
+                            <span className="text-gray-300">{c.amount_of_calls ?? 0}</span>
+                            <span className="text-gray-500">Owner</span>
+                            <span className="text-gray-300">{c.owners_name ?? '—'}</span>
+                            <span className="text-gray-500">Status</span>
+                            <span className="text-gray-300">{c.reach_out_response ?? '—'}</span>
+                            <span className="text-gray-500">Notes</span>
+                            <span className="text-gray-400 truncate">{c.notes ? c.notes.slice(0, 40) + (c.notes.length > 40 ? '…' : '') : '—'}</span>
+                          </div>
+                        </div>
+                        <div className="shrink-0 pt-1">
+                          {isKeep ? (
+                            <span className="flex items-center gap-1 text-xs text-green-500 font-medium py-1.5 px-3">
+                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                              </svg>
+                              Keep
+                            </span>
+                          ) : (
+                            <button
+                              disabled={deleting === c.id}
+                              onClick={() => handleDelete(c.id)}
+                              className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-red-950/40 border border-red-800/60 text-red-400 hover:bg-red-950/70 hover:text-red-300 transition-colors disabled:opacity-50"
+                            >
+                              {deleting === c.id ? 'Deleting…' : 'Delete'}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 py-3 border-t border-gray-800 shrink-0 flex justify-end">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors">
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── DupeFlag badge ────────────────────────────────────────────
 
 function DupeFlag({ info, companyName: _companyName }: { info: DupeInfo; companyName: string }) {
@@ -113,6 +279,7 @@ export function CompanyTable({ initialData }: Props) {
   const [newCompanyName, setNewCompanyName] = useState('')
   const [newNameError, setNewNameError] = useState(false)
   const [showDupesOnly, setShowDupesOnly] = useState(false)
+  const [showDedupeModal, setShowDedupeModal] = useState(false)
 
   // Recompute dupe map whenever data changes
   const dupeMap = useMemo(() => buildDupeMap(data), [data])
@@ -311,20 +478,28 @@ export function CompanyTable({ initialData }: Props) {
             {displayData.length.toLocaleString()} {displayData.length === 1 ? 'company' : 'companies'}
           </span>
           {dupeCount > 0 && (
-            <button
-              onClick={() => setShowDupesOnly(o => !o)}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-medium transition-colors ${
-                showDupesOnly
-                  ? 'border-orange-500 bg-orange-950/40 text-orange-300'
-                  : 'border-orange-700/50 bg-orange-950/20 text-orange-400 hover:bg-orange-950/30'
-              }`}
-            >
-              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
-              </svg>
-              {dupeCount} duplicate{dupeCount !== 1 ? 's' : ''}
-              {showDupesOnly && ' — showing only'}
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => setShowDupesOnly(o => !o)}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-medium transition-colors ${
+                  showDupesOnly
+                    ? 'border-orange-500 bg-orange-950/40 text-orange-300'
+                    : 'border-orange-700/50 bg-orange-950/20 text-orange-400 hover:bg-orange-950/30'
+                }`}
+              >
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                </svg>
+                {dupeCount} duplicate{dupeCount !== 1 ? 's' : ''}
+                {showDupesOnly && ' — showing only'}
+              </button>
+              <button
+                onClick={() => setShowDedupeModal(true)}
+                className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-orange-700/50 bg-orange-950/20 text-orange-400 hover:bg-orange-950/40 text-xs font-medium transition-colors"
+              >
+                Clean up
+              </button>
+            </div>
           )}
           {dupeCount === 0 && (
             <span className="flex items-center gap-1 text-xs text-green-500">
@@ -454,6 +629,16 @@ export function CompanyTable({ initialData }: Props) {
           </tbody>
         </table>
       </div>
+
+      {showDedupeModal && (
+        <DedupeModal
+          data={data}
+          onClose={() => setShowDedupeModal(false)}
+          onDeleted={deletedId => {
+            setData(prev => prev.filter(c => c.id !== deletedId))
+          }}
+        />
+      )}
     </div>
   )
 }
