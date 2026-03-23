@@ -4,11 +4,7 @@ export const maxDuration = 300
 
 const ANTHROPIC_API = 'https://api.anthropic.com/v1/messages'
 
-interface AnthropicTextBlock {
-  type: 'text'
-  text: string
-}
-
+interface AnthropicTextBlock { type: 'text'; text: string }
 interface AnthropicResponse {
   content: (AnthropicTextBlock | { type: string })[]
   stop_reason: string
@@ -27,61 +23,101 @@ async function callAnthropic(
     },
     body: JSON.stringify(body),
   })
-
   const data = await res.json()
   if (!res.ok) {
-    const msg = data?.error?.message ?? JSON.stringify(data)
-    throw new Error(`Anthropic ${res.status}: ${msg}`)
+    throw new Error(`Anthropic ${res.status}: ${data?.error?.message ?? JSON.stringify(data)}`)
   }
   return data as AnthropicResponse
 }
 
-function extractOwnerFromJson(blocks: AnthropicResponse['content']): string | null {
-  const textBlocks = blocks.filter((b): b is AnthropicTextBlock => b.type === 'text')
-  const lastText = textBlocks.at(-1)?.text?.trim() ?? ''
-  const match = lastText.match(/\{[\s\S]*\}/)
-  if (!match) return null
-  try {
-    return (JSON.parse(match[0]) as { owner: string | null }).owner?.trim() || null
-  } catch {
-    return null
+function getAllText(content: AnthropicResponse['content']): string {
+  return content
+    .filter((b): b is AnthropicTextBlock => b.type === 'text')
+    .map(b => b.text)
+    .join('\n')
+}
+
+// Extract a person's name from Claude's natural language response.
+// Works with formats like:
+//   "Garth Thiessen"
+//   "The owner is Garth Thiessen."
+//   "Based on my search, the owner is **Garth Thiessen**."
+//   "Garth Thiessen — he's the General Manager/Owner of..."
+function extractNameFromText(text: string): string | null {
+  if (!text) return null
+
+  // First try JSON if Claude followed the format
+  const jsonMatch = text.match(/\{[\s\S]*?"owner"\s*:\s*"([^"]+)"[\s\S]*?\}/)
+  if (jsonMatch?.[1]) return jsonMatch[1].trim()
+
+  // Strip out common preamble phrases
+  const cleaned = text
+    .replace(/\*\*/g, '')
+    .replace(/^(Based on|According to|From|After|I found|My search|The search|Looking at|Searching)[^,:.]*[,:.]?\s*/gi, '')
+    .replace(/^(the|an?)\s+(owner|principal|founder|president|ceo|general manager|manager|proprietor)\s+(of\s+.+?\s+)?(is|was|appears to be|seems to be)\s+/gi, '')
+    .trim()
+
+  if (!cleaned) return null
+
+  // Take the first line
+  const firstLine = cleaned.split(/\n/)[0].trim()
+
+  // If it looks like a name (2-4 capitalized words), take it
+  const nameMatch = firstLine.match(/^([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})/)
+  if (nameMatch) {
+    const candidate = nameMatch[1].trim()
+    // Reject if it's a generic phrase
+    if (/^(The|This|That|There|Here|Unfortunately|Sorry|Cannot|Could|Would|However|Based|After|I was)/i.test(candidate)) {
+      return null
+    }
+    return candidate
   }
+
+  // Last resort: if the first line is short enough, just use it
+  if (firstLine.length >= 3 && firstLine.length <= 50 && !/[.!?]/.test(firstLine)) {
+    return firstLine
+  }
+
+  return null
 }
 
-// ── Attempt 1: web search (accurate, ~20-60 s) ──────────────────────────────
+// ── Web search approach (accurate, ~15-40 s) ────────────────────────────────
 async function searchWithWeb(apiKey: string, companyName: string, location: string): Promise<string | null> {
-  const prompt =
-    `Search the web for the owner or principal of the garage door company "${companyName}"${location}. ` +
-    `Check ZoomInfo, Yelp, BBB, the company website, and any other sources. ` +
-    `When done, reply with ONLY this JSON and nothing else:\n` +
-    `{"owner":"Full Name"}\n` +
-    `If you cannot find a name reply with: {"owner":null}`
-
+  // Mimic what you'd type on claude.ai — a natural question, not JSON instructions
   const data = await callAnthropic(apiKey, {
     model: 'claude-sonnet-4-6',
-    max_tokens: 512,
+    max_tokens: 1024,
     tools: [{ type: 'web_search_20250305', name: 'web_search' }],
-    messages: [{ role: 'user', content: prompt }],
+    messages: [{
+      role: 'user',
+      content:
+        `Find the owner of the garage door company "${companyName}"${location}. ` +
+        `Search ZoomInfo, Yelp, BBB, and the company's own website. ` +
+        `Tell me just their full name.`,
+    }],
   })
 
-  return extractOwnerFromJson(data.content)
+  const fullText = getAllText(data.content)
+  console.log(`[enrich-owner] web-search raw response:\n${fullText.slice(0, 500)}`)
+  return extractNameFromText(fullText)
 }
 
-// ── Attempt 2: training knowledge only (fast ~2-3 s) ────────────────────────
+// ── Knowledge fallback (fast ~2-3 s) ────────────────────────────────────────
 async function searchFromKnowledge(apiKey: string, companyName: string, location: string): Promise<string | null> {
-  const prompt =
-    `What is the owner or principal's full name of the garage door company "${companyName}"${location}? ` +
-    `Reply with ONLY this JSON and nothing else:\n` +
-    `{"owner":"Full Name"}\n` +
-    `If you don't know reply with: {"owner":null}`
-
   const data = await callAnthropic(apiKey, {
     model: 'claude-sonnet-4-6',
-    max_tokens: 128,
-    messages: [{ role: 'user', content: prompt }],
+    max_tokens: 256,
+    messages: [{
+      role: 'user',
+      content:
+        `Who is the owner of the garage door company "${companyName}"${location}? ` +
+        `Reply with just their full name, nothing else.`,
+    }],
   })
 
-  return extractOwnerFromJson(data.content)
+  const fullText = getAllText(data.content)
+  console.log(`[enrich-owner] knowledge raw response:\n${fullText.slice(0, 300)}`)
+  return extractNameFromText(fullText)
 }
 
 // ── Route ────────────────────────────────────────────────────────────────────
@@ -98,25 +134,22 @@ export async function POST(request: NextRequest) {
 
   const location = state ? ` in ${state}` : ''
 
-  // Try web search first; fall back to knowledge if it fails
   try {
-    console.log(`[enrich-owner] web-search: "${companyName}"${location}`)
+    console.log(`[enrich-owner] searching: "${companyName}"${location}`)
     const owner = await searchWithWeb(apiKey, companyName, location)
-    console.log(`[enrich-owner] web-search result: "${owner}"`)
-    return NextResponse.json({ owner, method: 'web' })
-  } catch (webErr) {
-    const webMsg = webErr instanceof Error ? webErr.message : String(webErr)
-    console.warn(`[enrich-owner] web-search failed: ${webMsg}`)
+    console.log(`[enrich-owner] web result: "${owner}"`)
+    if (owner) return NextResponse.json({ owner, method: 'web' })
+  } catch (err) {
+    console.warn(`[enrich-owner] web-search failed: ${err instanceof Error ? err.message : err}`)
+  }
 
-    try {
-      console.log(`[enrich-owner] knowledge fallback: "${companyName}"${location}`)
-      const owner = await searchFromKnowledge(apiKey, companyName, location)
-      console.log(`[enrich-owner] knowledge result: "${owner}"`)
-      return NextResponse.json({ owner, method: 'knowledge' })
-    } catch (knownErr) {
-      const knownMsg = knownErr instanceof Error ? knownErr.message : String(knownErr)
-      console.error(`[enrich-owner] both failed — web: "${webMsg}" knowledge: "${knownMsg}"`)
-      return NextResponse.json({ error: knownMsg, webError: webMsg }, { status: 502 })
-    }
+  try {
+    const owner = await searchFromKnowledge(apiKey, companyName, location)
+    console.log(`[enrich-owner] knowledge result: "${owner}"`)
+    return NextResponse.json({ owner, method: 'knowledge' })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error(`[enrich-owner] both failed: ${msg}`)
+    return NextResponse.json({ error: msg }, { status: 502 })
   }
 }
