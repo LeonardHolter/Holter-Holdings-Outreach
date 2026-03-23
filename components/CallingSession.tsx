@@ -171,6 +171,8 @@ export function CallingSession({ initialQueue }: Props) {
         if (lookupTargetRef.current !== companyId) return
         if (res.ok) {
           const data = await res.json()
+          console.log('[owner-lookup] Claude raw response:', data.raw)
+          console.log('[owner-lookup] Extracted owner:', data.owner, '| Method:', data.method)
           if (data.owner) {
             setOwnersName(data.owner)
             toast.success(`Found owner: ${data.owner}`)

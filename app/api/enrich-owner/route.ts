@@ -82,7 +82,7 @@ function extractNameFromText(text: string): string | null {
 }
 
 // ── Web search approach (accurate, ~15-40 s) ────────────────────────────────
-async function searchWithWeb(apiKey: string, companyName: string, location: string): Promise<string | null> {
+async function searchWithWeb(apiKey: string, companyName: string, location: string): Promise<{ owner: string | null; raw: string }> {
   // Mimic what you'd type on claude.ai — a natural question, not JSON instructions
   const data = await callAnthropic(apiKey, {
     model: 'claude-sonnet-4-6',
@@ -99,11 +99,11 @@ async function searchWithWeb(apiKey: string, companyName: string, location: stri
 
   const fullText = getAllText(data.content)
   console.log(`[enrich-owner] web-search raw response:\n${fullText.slice(0, 500)}`)
-  return extractNameFromText(fullText)
+  return { owner: extractNameFromText(fullText), raw: fullText }
 }
 
 // ── Knowledge fallback (fast ~2-3 s) ────────────────────────────────────────
-async function searchFromKnowledge(apiKey: string, companyName: string, location: string): Promise<string | null> {
+async function searchFromKnowledge(apiKey: string, companyName: string, location: string): Promise<{ owner: string | null; raw: string }> {
   const data = await callAnthropic(apiKey, {
     model: 'claude-sonnet-4-6',
     max_tokens: 256,
@@ -117,7 +117,7 @@ async function searchFromKnowledge(apiKey: string, companyName: string, location
 
   const fullText = getAllText(data.content)
   console.log(`[enrich-owner] knowledge raw response:\n${fullText.slice(0, 300)}`)
-  return extractNameFromText(fullText)
+  return { owner: extractNameFromText(fullText), raw: fullText }
 }
 
 // ── Route ────────────────────────────────────────────────────────────────────
@@ -134,22 +134,25 @@ export async function POST(request: NextRequest) {
 
   const location = state ? ` in ${state}` : ''
 
+  let rawResponse = ''
   try {
     console.log(`[enrich-owner] searching: "${companyName}"${location}`)
-    const owner = await searchWithWeb(apiKey, companyName, location)
+    const { owner, raw } = await searchWithWeb(apiKey, companyName, location)
+    rawResponse = raw
     console.log(`[enrich-owner] web result: "${owner}"`)
-    if (owner) return NextResponse.json({ owner, method: 'web' })
+    if (owner) return NextResponse.json({ owner, method: 'web', raw })
   } catch (err) {
     console.warn(`[enrich-owner] web-search failed: ${err instanceof Error ? err.message : err}`)
   }
 
   try {
-    const owner = await searchFromKnowledge(apiKey, companyName, location)
+    const { owner, raw } = await searchFromKnowledge(apiKey, companyName, location)
+    rawResponse = raw
     console.log(`[enrich-owner] knowledge result: "${owner}"`)
-    return NextResponse.json({ owner, method: 'knowledge' })
+    return NextResponse.json({ owner, method: 'knowledge', raw })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     console.error(`[enrich-owner] both failed: ${msg}`)
-    return NextResponse.json({ error: msg }, { status: 502 })
+    return NextResponse.json({ error: msg, raw: rawResponse }, { status: 502 })
   }
 }
