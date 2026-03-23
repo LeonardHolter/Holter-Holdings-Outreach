@@ -178,6 +178,10 @@ export function CallingSession({ initialQueue }: Props) {
           setSearchingOwner(false)
           return
         }
+        // Log the actual error body so we can see it in the browser console
+        const errBody = await res.json().catch(() => ({}))
+        console.error('[owner-lookup] API error', res.status, errBody)
+        toast.error(`Owner lookup failed: ${errBody.error ?? res.status}`, { id: 'owner-err' })
         // Transient server error — wait before retrying
         if (attempt < MAX_ATTEMPTS) await new Promise(r => setTimeout(r, attempt * 1500))
       } catch {
