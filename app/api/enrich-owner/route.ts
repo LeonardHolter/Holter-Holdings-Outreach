@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
       tools: [{ type: 'web_search_20260209' as const, name: 'web_search' }],
       messages: [{
         role: 'user',
-        content: `Who is the owner of the garage door company "${companyName}"${location}? Reply with ONLY their full name, nothing else.`,
+        content: `Find the owner or principal of the garage door company "${companyName}"${location}. Search ZoomInfo, Yelp, and the Better Business Bureau (BBB) first, then any other sources. Reply with ONLY the owner's full name — no titles, no company name, no explanation, just the name.`,
       }],
     })
 
