@@ -91,9 +91,8 @@ async function searchWithWeb(apiKey: string, companyName: string, location: stri
     messages: [{
       role: 'user',
       content:
-        `Find the owner of the garage door company "${companyName}"${location}. ` +
-        `Search ZoomInfo, Yelp, BBB, and the company's own website. ` +
-        `Tell me just their full name.`,
+        `Find the owner name of the garage door company "${companyName}"${location}. ` +
+        `return just their full name.`,
     }],
   })
 
