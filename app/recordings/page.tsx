@@ -49,8 +49,12 @@ export default async function RecordingsPage() {
     grouped[key].push(r)
   }
 
-  // Sort callers by recording count descending
-  const callers = Object.keys(grouped).sort((a, b) => grouped[b].length - grouped[a].length)
+  // Sort callers by newest recording first
+  const callers = Object.keys(grouped).sort((a, b) => {
+    const aNewest = grouped[a][0]?.called_at ?? ''
+    const bNewest = grouped[b][0]?.called_at ?? ''
+    return bNewest.localeCompare(aNewest)
+  })
 
   const totalSeconds = rows.reduce((s, r) => s + (r.duration_seconds ?? 0), 0)
   const totalWithDuration = rows.filter(r => r.duration_seconds && r.duration_seconds > 0).length
@@ -100,7 +104,10 @@ export default async function RecordingsPage() {
           const callerRows = grouped[caller]
           const callerSeconds = callerRows.reduce((s, r) => s + (r.duration_seconds ?? 0), 0)
 
-          const recordings = callerRows.map(r => ({
+          // Ensure each caller section also shows newest recordings first
+          const recordings = [...callerRows]
+            .sort((a, b) => b.called_at.localeCompare(a.called_at))
+            .map(r => ({
             id: r.id,
             company_name: r.companies?.company_name ?? null,
             state: r.companies?.state ?? null,
@@ -109,7 +116,7 @@ export default async function RecordingsPage() {
             streamUrl: r.recording_url
               ? `/api/twilio/recordings/stream?url=${encodeURIComponent(r.recording_url)}`
               : null,
-          }))
+            }))
 
           return (
             <CallerSection
