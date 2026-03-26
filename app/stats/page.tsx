@@ -143,7 +143,7 @@ export default async function StatsPage({
   // Use the SAME call denominator as "Most Calls" to avoid mismatch
   // between leaderboard cards (e.g. 136 vs 260 for the same person).
   const leaderboardIntroRate = Object.entries(whoCalledMap)
-    .filter(([, companyCount]) => companyCount >= 3)
+    .filter(([, companyCount]) => companyCount >= 50)
     .map(([name, companyCount]) => ({
       name,
       companies: companyCount,
@@ -264,7 +264,7 @@ export default async function StatsPage({
                   </div>
                 </div>
               ))}
-              {leaderboardIntroRate.length === 0 && <p className="text-gray-600 text-sm">Need at least 3 calls per person</p>}
+              {leaderboardIntroRate.length === 0 && <p className="text-gray-600 text-sm">Need at least 50 calls per person</p>}
             </div>
           </div>
         </div>
