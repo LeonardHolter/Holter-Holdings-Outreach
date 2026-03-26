@@ -115,17 +115,20 @@ export default async function StatsPage({
   }
 
   const whoCalledMap: Record<string, number> = {}
+  const callVolumeMap: Record<string, number> = {}
   const introByCallerMap: Record<string, number> = {}
   activity.forEach(c => {
     if (c.who_called) {
       whoCalledMap[c.who_called] = (whoCalledMap[c.who_called] ?? 0) + 1
+      callVolumeMap[c.who_called] = (callVolumeMap[c.who_called] ?? 0) + (c.amount_of_calls ?? 0)
       if (c.reach_out_response === 'Intro-meeting wanted') {
         introByCallerMap[c.who_called] = (introByCallerMap[c.who_called] ?? 0) + 1
       }
     }
   })
 
-  const callers = Object.entries(whoCalledMap)
+  // "Most Calls" should reflect call volume, not just number of company rows touched.
+  const callers = Object.entries(callVolumeMap)
     .map(([name, calls]) => ({
       name,
       calls,
@@ -139,13 +142,13 @@ export default async function StatsPage({
   const leaderboardCalls = [...callers].sort((a, b) => b.calls - a.calls).filter(c => c.calls > 0)
   // Use the SAME call denominator as "Most Calls" to avoid mismatch
   // between leaderboard cards (e.g. 136 vs 260 for the same person).
-  const leaderboardIntroRate = callers
-    .filter(c => c.calls >= 3)
-    .map(c => ({
-      name: c.name,
-      calls: c.calls,
-      intros: introByCallerMap[c.name] ?? 0,
-      rate: ((introByCallerMap[c.name] ?? 0) / c.calls) * 100,
+  const leaderboardIntroRate = Object.entries(whoCalledMap)
+    .filter(([, companyCount]) => companyCount >= 3)
+    .map(([name, companyCount]) => ({
+      name,
+      companies: companyCount,
+      intros: introByCallerMap[name] ?? 0,
+      rate: ((introByCallerMap[name] ?? 0) / companyCount) * 100,
     }))
     .sort((a, b) => b.rate - a.rate)
 
@@ -254,9 +257,9 @@ export default async function StatsPage({
                     <div className="w-24 bg-gray-800 rounded-full h-1.5 overflow-hidden">
                       <div className="h-1.5 rounded-full bg-green-500" style={{ width: `${(c.rate / (leaderboardIntroRate[0]?.rate || 1)) * 100}%` }} />
                     </div>
-                    <span className="text-sm font-bold tabular-nums text-green-400 w-16 text-right">
+                    <span className="text-sm font-bold tabular-nums text-green-400 w-20 text-right">
                       {c.rate.toFixed(1)}%
-                      <span className="text-gray-600 font-normal text-xs ml-1">({c.intros}/{c.calls})</span>
+                      <span className="text-gray-600 font-normal text-xs ml-1">({c.intros}/{c.companies})</span>
                     </span>
                   </div>
                 </div>
@@ -272,7 +275,7 @@ export default async function StatsPage({
             <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wide mb-1 flex items-center gap-2">
               <span>🎙</span> Talk Time Analytics
             </h2>
-            <p className="text-xs text-gray-600 mb-5">Actual conversation time from recorded calls</p>
+            <p className="text-xs text-gray-600 mb-5">Actual conversation time from recorded calls (not all dials are recorded)</p>
             <div className="grid grid-cols-12 gap-2 text-xs text-gray-600 uppercase tracking-wide font-medium mb-3 px-1">
               <span className="col-span-2">Rep</span>
               <span className="col-span-4">Talk time</span>
