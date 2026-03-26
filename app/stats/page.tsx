@@ -103,15 +103,7 @@ export default async function StatsPage({
   const introRate    = activeCalls > 0 ? ((introMeetings / activeCalls) * 100).toFixed(1) : '0.0'
   const totalDialed  = period === 'all'
     ? pipeline.reduce((s, c) => s + (c.amount_of_calls ?? 0), 0)
-    : recordings.length
-
-  // Caller call counts should come from call events, not legacy cumulative row fields.
-  const callCounts: Record<string, number> = {}
-  recordings.forEach(r => {
-    const name = (r.called_by ?? '').trim()
-    if (!name) return
-    callCounts[name] = (callCounts[name] ?? 0) + 1
-  })
+    : activity.reduce((s, c) => s + (c.amount_of_calls ?? 0), 0)
 
   const callerColorMap: Record<string, string> = {
     leonard: 'bg-blue-500',
@@ -122,7 +114,7 @@ export default async function StatsPage({
     ellison: 'bg-cyan-500',
   }
 
-  const callers = Object.entries(callCounts)
+  const callers = Object.entries(whoCalledMap)
     .map(([name, calls]) => ({
       name,
       calls,
@@ -218,11 +210,7 @@ export default async function StatsPage({
           <KPI label="Not Yet Called"    value={notCalled.toLocaleString()} color="text-gray-400" />
           <KPI label={period === 'all' ? 'Intro Meetings' : 'Intros (period)'} value={introMeetings.toString()} color="text-green-400" sub={`${introRate}% rate`} />
           <KPI label="Not Interested"    value={notInterested.toString()} color="text-red-400" />
-          <KPI
-            label={period === 'all' ? 'Total Calls Logged' : 'Recorded Calls (period)'}
-            value={totalDialed.toLocaleString()}
-            color="text-blue-400"
-          />
+          <KPI label="Total Dialed" value={totalDialed.toLocaleString()} color="text-blue-400" />
         </div>
 
         {/* Leaderboard */}
