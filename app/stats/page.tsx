@@ -144,13 +144,15 @@ export default async function StatsPage({
   const whoCalledEntries = Object.entries(whoCalledMap).sort((a, b) => b[1] - a[1])
 
   const leaderboardCalls = [...callers].sort((a, b) => b.calls - a.calls).filter(c => c.calls > 0)
-  const leaderboardIntroRate = Object.entries(whoCalledMap)
-    .filter(([, count]) => count >= 3)
-    .map(([name, callCount]) => ({
-      name,
-      calls: callCount,
-      intros: introByCallerMap[name] ?? 0,
-      rate: ((introByCallerMap[name] ?? 0) / callCount) * 100,
+  // Use the SAME call denominator as "Most Calls" to avoid mismatch
+  // between leaderboard cards (e.g. 136 vs 260 for the same person).
+  const leaderboardIntroRate = callers
+    .filter(c => c.calls >= 3)
+    .map(c => ({
+      name: c.name,
+      calls: c.calls,
+      intros: introByCallerMap[c.name] ?? 0,
+      rate: ((introByCallerMap[c.name] ?? 0) / c.calls) * 100,
     }))
     .sort((a, b) => b.rate - a.rate)
 
