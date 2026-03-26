@@ -156,7 +156,7 @@ export function CallingSession({ initialQueue }: Props) {
   // ── Owner lookup ─────────────────────────────────────────────
   // companyId is used to guard against stale responses when the user
   // navigates to the next company before the API returns.
-  const lookupOwner = useCallback(async (companyId: string, name: string, companyState: string) => {
+  const lookupOwner = useCallback(async (companyId: string, name: string, companyState: string, companyPhone: string) => {
     lookupTargetRef.current = companyId
     setSearchingOwner(true)
     const MAX_ATTEMPTS = 3
@@ -165,7 +165,7 @@ export function CallingSession({ initialQueue }: Props) {
         const res = await fetch('/api/enrich-owner', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ companyName: name, state: companyState }),
+          body: JSON.stringify({ companyName: name, state: companyState, phoneNumber: companyPhone }),
         })
         // If user already moved to another company, discard result
         if (lookupTargetRef.current !== companyId) return
@@ -214,7 +214,7 @@ export function CallingSession({ initialQueue }: Props) {
     setNoteHistory([])
     setShowHistory(false)
     const noOwner = !c.owners_name || c.owners_name === 'Not found'
-    if (noOwner && c.company_name) lookupOwner(c.id, c.company_name, c.state ?? '')
+    if (noOwner && c.company_name) lookupOwner(c.id, c.company_name, c.state ?? '', c.phone_number ?? '')
     // Fetch note history in background
     setLoadingHistory(true)
     fetch(`/api/companies/${c.id}/notes`)
@@ -846,7 +846,7 @@ export function CallingSession({ initialQueue }: Props) {
                   ) : company && (
                     <button
                       type="button"
-                      onClick={() => lookupOwner(company.id, companyName || company.company_name, state || company.state || '')}
+                      onClick={() => lookupOwner(company.id, companyName || company.company_name, state || company.state || '', phoneNumber || company.phone_number || '')}
                       className="text-xs px-2 py-0.5 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white transition-colors"
                       title="Search for owner name"
                     >

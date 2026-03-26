@@ -82,7 +82,12 @@ function extractNameFromText(text: string): string | null {
 }
 
 // ── Web search approach (accurate, ~15-40 s) ────────────────────────────────
-async function searchWithWeb(apiKey: string, companyName: string, location: string): Promise<{ owner: string | null; raw: string }> {
+async function searchWithWeb(
+  apiKey: string,
+  companyName: string,
+  location: string,
+  phoneNumber: string,
+): Promise<{ owner: string | null; raw: string }> {
   // Mimic what you'd type on claude.ai — a natural question, not JSON instructions
   const data = await callAnthropic(apiKey, {
     model: 'claude-sonnet-4-6',
@@ -92,6 +97,7 @@ async function searchWithWeb(apiKey: string, companyName: string, location: stri
       role: 'user',
       content:
         `Find the owner of the garage door company "${companyName}"${location}. ` +
+        `The company phone number is "${phoneNumber}". ` +
         `Search ZoomInfo, Yelp, BBB, and the company's own website. ` +
         `Tell me just their full name.`,
     }],
@@ -103,7 +109,12 @@ async function searchWithWeb(apiKey: string, companyName: string, location: stri
 }
 
 // ── Knowledge fallback (fast ~2-3 s) ────────────────────────────────────────
-async function searchFromKnowledge(apiKey: string, companyName: string, location: string): Promise<{ owner: string | null; raw: string }> {
+async function searchFromKnowledge(
+  apiKey: string,
+  companyName: string,
+  location: string,
+  phoneNumber: string,
+): Promise<{ owner: string | null; raw: string }> {
   const data = await callAnthropic(apiKey, {
     model: 'claude-sonnet-4-6',
     max_tokens: 256,
@@ -111,6 +122,7 @@ async function searchFromKnowledge(apiKey: string, companyName: string, location
       role: 'user',
       content:
         `Who is the owner of the garage door company "${companyName}"${location}? ` +
+        `The company phone number is "${phoneNumber}". ` +
         `Reply with just their full name, nothing else.`,
     }],
   })
@@ -127,17 +139,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'ANTHROPIC_API_KEY not set in Vercel env vars' }, { status: 500 })
   }
 
-  const { companyName, state } = await request.json()
+  const { companyName, state, phoneNumber } = await request.json()
   if (!companyName) {
     return NextResponse.json({ error: 'companyName is required' }, { status: 400 })
   }
 
   const location = state ? ` in ${state}` : ''
+  const phone = phoneNumber ? String(phoneNumber) : 'Unknown'
 
   // Try knowledge first (fast, works on Hobby plan). If it fails, try web search.
   try {
     console.log(`[enrich-owner] knowledge: "${companyName}"${location}`)
-    const { owner, raw } = await searchFromKnowledge(apiKey, companyName, location)
+    const { owner, raw } = await searchFromKnowledge(apiKey, companyName, location, phone)
     console.log(`[enrich-owner] knowledge result: "${owner}"`)
     if (owner) return NextResponse.json({ owner, method: 'knowledge', raw })
   } catch (err) {
@@ -146,7 +159,7 @@ export async function POST(request: NextRequest) {
 
   try {
     console.log(`[enrich-owner] web-search: "${companyName}"${location}`)
-    const { owner, raw } = await searchWithWeb(apiKey, companyName, location)
+    const { owner, raw } = await searchWithWeb(apiKey, companyName, location, phone)
     console.log(`[enrich-owner] web result: "${owner}"`)
     return NextResponse.json({ owner, method: 'web', raw })
   } catch (err) {
