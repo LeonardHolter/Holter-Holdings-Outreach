@@ -96,10 +96,9 @@ async function searchWithWeb(
     messages: [{
       role: 'user',
       content:
-        `Find the owner of the garage door company "${companyName}"${location}. ` +
+        `You are a world class garage door owner finder that never gives up.Find the owner of the garage door company "${companyName}"${location}. ` +
         `The company phone number is "${phoneNumber}". ` +
-        `Search ZoomInfo, Yelp, BBB, and the company's own website. ` +
-        `Tell me just their full name.`,
+        `spend as much time as needed to find the owner. Make sure you find it. Tell me just their full name.`,
     }],
   })
 
