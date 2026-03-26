@@ -114,15 +114,6 @@ export default async function StatsPage({
     ellison: 'bg-cyan-500',
   }
 
-  const callers = Object.entries(whoCalledMap)
-    .map(([name, calls]) => ({
-      name,
-      calls,
-      color: callerColorMap[name.toLowerCase()] ?? 'bg-indigo-500',
-    }))
-    .sort((a, b) => b.calls - a.calls)
-  const maxCalls = Math.max(...callers.map(c => c.calls), 1)
-
   const whoCalledMap: Record<string, number> = {}
   const introByCallerMap: Record<string, number> = {}
   activity.forEach(c => {
@@ -133,6 +124,16 @@ export default async function StatsPage({
       }
     }
   })
+
+  const callers = Object.entries(whoCalledMap)
+    .map(([name, calls]) => ({
+      name,
+      calls,
+      color: callerColorMap[name.toLowerCase()] ?? 'bg-indigo-500',
+    }))
+    .sort((a, b) => b.calls - a.calls)
+  const maxCalls = Math.max(...callers.map(c => c.calls), 1)
+
   const whoCalledEntries = Object.entries(whoCalledMap).sort((a, b) => b[1] - a[1])
 
   const leaderboardCalls = [...callers].sort((a, b) => b.calls - a.calls).filter(c => c.calls > 0)
