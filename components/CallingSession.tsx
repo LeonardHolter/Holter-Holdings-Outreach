@@ -56,6 +56,9 @@ function callbackMatchesNow(c: Company): boolean {
  * 2. Not-yet-called  (no callback or not matching)
  * 3. Previously-called AND callback matches now
  * 4. Previously-called (oldest contact first)
+ *
+ * Within each priority tier, companies are ordered by google_reviews descending
+ * so the highest-reviewed companies are called first.
  */
 function sortQueueByCallback(q: Company[]): Company[] {
   const score = (c: Company): number => {
@@ -69,8 +72,10 @@ function sortQueueByCallback(q: Company[]): Company[] {
   return [...q].sort((a, b) => {
     const sd = score(a) - score(b)
     if (sd !== 0) return sd
-    // Within score 3 (previously called), keep oldest-first order
-    return 0
+    // Within each tier, show companies with most reviews first
+    const ra = a.google_reviews ?? 0
+    const rb = b.google_reviews ?? 0
+    return rb - ra
   })
 }
 function twoWeeksStr() {

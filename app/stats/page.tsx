@@ -257,7 +257,7 @@ export default async function StatsPage({
                     <div className="w-24 bg-gray-800 rounded-full h-1.5 overflow-hidden">
                       <div className="h-1.5 rounded-full bg-green-500" style={{ width: `${(c.rate / (leaderboardIntroRate[0]?.rate || 1)) * 100}%` }} />
                     </div>
-                    <span className="text-sm font-bold tabular-nums text-green-400 w-20 text-right">
+                    <span className="text-sm font-bold tabular-nums text-green-400 whitespace-nowrap text-right">
                       {c.rate.toFixed(1)}%
                       <span className="text-gray-600 font-normal text-xs ml-1">({c.intros}/{c.companies})</span>
                     </span>
