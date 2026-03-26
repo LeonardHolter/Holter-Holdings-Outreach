@@ -28,7 +28,7 @@ async function fetchAll(since: string | null): Promise<Company[]> {
   const supabase = await createClient()
   let q = supabase
     .from('companies')
-    .select('reach_out_response,who_called,calls_leonard,calls_tommaso,calls_john,calls_sunzim,calls_daniel,calls_ellison,total_dialed,state,google_reviews,amount_of_calls,last_reach_out')
+    .select('reach_out_response,who_called,state,google_reviews,amount_of_calls,last_reach_out')
   if (since) q = q.gte('last_reach_out', since.slice(0, 10))
   const { data, error } = await q
   if (error) return []
@@ -101,16 +101,34 @@ export default async function StatsPage({
 
   const activeCalls  = period === 'all' ? called : activity.length
   const introRate    = activeCalls > 0 ? ((introMeetings / activeCalls) * 100).toFixed(1) : '0.0'
-  const totalDialed  = activity.reduce((s, c) => s + (c.total_dialed ?? 0), 0)
+  const totalDialed  = period === 'all'
+    ? pipeline.reduce((s, c) => s + (c.amount_of_calls ?? 0), 0)
+    : recordings.length
 
-  const callers = [
-    { name: 'Leonard',  calls: activity.reduce((s, c) => s + (c.calls_leonard  ?? 0), 0), color: 'bg-blue-500' },
-    { name: 'Tommaso',  calls: activity.reduce((s, c) => s + (c.calls_tommaso  ?? 0), 0), color: 'bg-violet-500' },
-    { name: 'John',     calls: activity.reduce((s, c) => s + (c.calls_john     ?? 0), 0), color: 'bg-emerald-500' },
-    { name: 'Sunzim',   calls: activity.reduce((s, c) => s + (c.calls_sunzim   ?? 0), 0), color: 'bg-amber-500' },
-    { name: 'Daniel',   calls: activity.reduce((s, c) => s + (c.calls_daniel   ?? 0), 0), color: 'bg-rose-500' },
-    { name: 'Ellison',  calls: activity.reduce((s, c) => s + (c.calls_ellison  ?? 0), 0), color: 'bg-cyan-500' },
-  ]
+  // Caller call counts should come from call events, not legacy cumulative row fields.
+  const callCounts: Record<string, number> = {}
+  recordings.forEach(r => {
+    const name = (r.called_by ?? '').trim()
+    if (!name) return
+    callCounts[name] = (callCounts[name] ?? 0) + 1
+  })
+
+  const callerColorMap: Record<string, string> = {
+    leonard: 'bg-blue-500',
+    tommaso: 'bg-violet-500',
+    john: 'bg-emerald-500',
+    sunzim: 'bg-amber-500',
+    daniel: 'bg-rose-500',
+    ellison: 'bg-cyan-500',
+  }
+
+  const callers = Object.entries(callCounts)
+    .map(([name, calls]) => ({
+      name,
+      calls,
+      color: callerColorMap[name.toLowerCase()] ?? 'bg-indigo-500',
+    }))
+    .sort((a, b) => b.calls - a.calls)
   const maxCalls = Math.max(...callers.map(c => c.calls), 1)
 
   const whoCalledMap: Record<string, number> = {}
@@ -198,7 +216,11 @@ export default async function StatsPage({
           <KPI label="Not Yet Called"    value={notCalled.toLocaleString()} color="text-gray-400" />
           <KPI label={period === 'all' ? 'Intro Meetings' : 'Intros (period)'} value={introMeetings.toString()} color="text-green-400" sub={`${introRate}% rate`} />
           <KPI label="Not Interested"    value={notInterested.toString()} color="text-red-400" />
-          <KPI label="Total Dialed"      value={totalDialed.toLocaleString()} color="text-blue-400" />
+          <KPI
+            label={period === 'all' ? 'Total Calls Logged' : 'Recorded Calls (period)'}
+            value={totalDialed.toLocaleString()}
+            color="text-blue-400"
+          />
         </div>
 
         {/* Leaderboard */}
