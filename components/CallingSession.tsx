@@ -367,7 +367,10 @@ export function CallingSession({ initialQueue }: Props) {
       setUsageToday(u => u + 1)
       setAllUsage(prev => prev.map(n => n.number === callerId ? { ...n, count: n.count + 1 } : n))
 
+      let didConnect = false
+
       call.on('accept', () => {
+        didConnect = true
         setCallStatus('connected')
         const sid = call.parameters?.CallSid ?? ''
         setCallSid(sid)
@@ -380,8 +383,14 @@ export function CallingSession({ initialQueue }: Props) {
 
       call.on('disconnect', () => {
         clearInterval(timerRef.current!)
-        setCallStatus('ended')
         activeCallRef.current = null
+        if (!didConnect) {
+          // Call never connected — bad/unreachable number, reset silently
+          setCallStatus('idle')
+          toast.error(`Call failed — number may be invalid or unreachable: ${phoneNumber}`)
+        } else {
+          setCallStatus('ended')
+        }
       })
 
       call.on('error', (err: Error) => {
