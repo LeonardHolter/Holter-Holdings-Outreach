@@ -137,6 +137,7 @@ export function CallingSession({ initialQueue }: Props) {
   // Twilio
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const deviceRef    = useRef<any>(null)
+  const audioRef     = useRef<HTMLAudioElement>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const activeCallRef = useRef<any>(null)
   const [callStatus, setCallStatus]   = useState<CallStatus>('idle')
@@ -307,6 +308,8 @@ export function CallingSession({ initialQueue }: Props) {
         }
         device.on('error', (err: Error) => toast.error(`Twilio: ${err.message}`))
         await device.register()
+        // Pre-initialize speaker output to prevent _onAddTrack setSinkId errors
+        device.audio?.speakerDevices.set('default').catch(() => {})
 
         // ── Inbound call handler ──────────────────────────────────
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -557,6 +560,8 @@ export function CallingSession({ initialQueue }: Props) {
 
   return (
     <div className="flex-1 overflow-y-auto flex flex-col items-center justify-start py-4 sm:py-8 px-3 sm:px-4 pb-safe">
+      {/* Hidden audio element — keeps Twilio's remote stream attached to the DOM */}
+      <audio ref={audioRef} autoPlay style={{ display: 'none' }} />
 
       {/* ── Incoming call overlay ── */}
       {incomingCall && (
