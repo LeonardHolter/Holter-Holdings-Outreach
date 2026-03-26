@@ -83,6 +83,12 @@ export default function MeetingCardClient({ company: initial }: { company: Compa
     await patch({ andre_heard_back: value || null })
   }
 
+  async function setPriority(priority: 'high' | 'low' | null) {
+    await patch({ meeting_priority: priority })
+    if (priority) toast.success(`Set to ${priority} priority`)
+    else toast.success('Priority cleared')
+  }
+
   return (
     <div className={`border rounded-2xl p-5 space-y-4 transition-all ${
       c.andre_lead_given
@@ -138,6 +144,33 @@ export default function MeetingCardClient({ company: initial }: { company: Compa
 
       {/* Details grid */}
       <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+        <Detail label="Priority">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPriority(c.meeting_priority === 'high' ? null : 'high')}
+              disabled={saving}
+              className={`px-2.5 py-1 rounded-lg border text-xs font-medium transition-colors ${
+                c.meeting_priority === 'high'
+                  ? 'bg-red-900/60 border-red-700 text-red-300'
+                  : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-red-300 hover:border-red-700/60'
+              }`}
+            >
+              High
+            </button>
+            <button
+              onClick={() => setPriority(c.meeting_priority === 'low' ? null : 'low')}
+              disabled={saving}
+              className={`px-2.5 py-1 rounded-lg border text-xs font-medium transition-colors ${
+                c.meeting_priority === 'low'
+                  ? 'bg-blue-900/60 border-blue-700 text-blue-300'
+                  : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-blue-300 hover:border-blue-700/60'
+              }`}
+            >
+              Low
+            </button>
+          </div>
+        </Detail>
+
         <Detail label="Owner">
           <span className="text-sm text-white">{c.owners_name || '—'}</span>
         </Detail>

@@ -12,7 +12,15 @@ async function fetchIntroMeetings(): Promise<Company[]> {
     .select('*')
     .eq('reach_out_response', 'Intro-meeting wanted')
     .order('next_reach_out', { ascending: true, nullsFirst: false })
-  return (data as Company[]) ?? []
+  const rows = (data as Company[]) ?? []
+  const rank = (p: Company['meeting_priority']) => (p === 'high' ? 0 : p === 'low' ? 1 : 2)
+  return [...rows].sort((a, b) => {
+    const pr = rank(a.meeting_priority) - rank(b.meeting_priority)
+    if (pr !== 0) return pr
+    const aDate = a.next_reach_out ?? '9999-12-31'
+    const bDate = b.next_reach_out ?? '9999-12-31'
+    return aDate.localeCompare(bDate)
+  })
 }
 
 export default async function MeetingsPage() {
