@@ -89,6 +89,21 @@ export default function MeetingCardClient({ company: initial }: { company: Compa
     else toast.success('Priority cleared')
   }
 
+  const followUpCalls = c.follow_up_calls ?? 0
+  const followUpEmails = c.follow_up_emails ?? 0
+  const followUpTotal = followUpCalls + followUpEmails
+
+  async function bumpFollowUp(kind: 'call' | 'email', delta: 1 | -1) {
+    const nextCalls = kind === 'call' ? Math.max(0, followUpCalls + delta) : followUpCalls
+    const nextEmails = kind === 'email' ? Math.max(0, followUpEmails + delta) : followUpEmails
+    const nextTotal = nextCalls + nextEmails
+    if (nextTotal > 21) {
+      toast.error('Follow-ups are capped at 21 total')
+      return
+    }
+    await patch({ follow_up_calls: nextCalls, follow_up_emails: nextEmails })
+  }
+
   return (
     <div className={`border rounded-2xl p-5 space-y-4 transition-all ${
       c.andre_lead_given
@@ -213,6 +228,42 @@ export default function MeetingCardClient({ company: initial }: { company: Compa
           <p className="text-sm text-gray-300 whitespace-pre-wrap leading-relaxed">{c.notes}</p>
         </div>
       )}
+
+      {/* Follow-ups */}
+      <div className="pt-2 border-t border-gray-800 space-y-2">
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Follow-ups</p>
+          <span className={`text-xs font-medium ${followUpTotal >= 21 ? 'text-red-400' : 'text-gray-400'}`}>
+            {followUpTotal}/21
+          </span>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div className="bg-gray-800/70 border border-gray-700 rounded-lg p-2.5">
+            <p className="text-[11px] text-gray-500 uppercase tracking-wide">Calls</p>
+            <div className="mt-1 flex items-center justify-between">
+              <span className="text-sm text-white font-semibold tabular-nums">{followUpCalls}</span>
+              <div className="flex gap-1">
+                <button onClick={() => bumpFollowUp('call', -1)} disabled={saving || followUpCalls <= 0}
+                  className="w-6 h-6 rounded border border-gray-600 text-gray-300 hover:text-white disabled:opacity-40">−</button>
+                <button onClick={() => bumpFollowUp('call', 1)} disabled={saving || followUpTotal >= 21}
+                  className="w-6 h-6 rounded border border-gray-600 text-gray-300 hover:text-white disabled:opacity-40">+</button>
+              </div>
+            </div>
+          </div>
+          <div className="bg-gray-800/70 border border-gray-700 rounded-lg p-2.5">
+            <p className="text-[11px] text-gray-500 uppercase tracking-wide">Emails</p>
+            <div className="mt-1 flex items-center justify-between">
+              <span className="text-sm text-white font-semibold tabular-nums">{followUpEmails}</span>
+              <div className="flex gap-1">
+                <button onClick={() => bumpFollowUp('email', -1)} disabled={saving || followUpEmails <= 0}
+                  className="w-6 h-6 rounded border border-gray-600 text-gray-300 hover:text-white disabled:opacity-40">−</button>
+                <button onClick={() => bumpFollowUp('email', 1)} disabled={saving || followUpTotal >= 21}
+                  className="w-6 h-6 rounded border border-gray-600 text-gray-300 hover:text-white disabled:opacity-40">+</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* Andre section */}
       <div className="pt-2 border-t border-gray-800 space-y-3">

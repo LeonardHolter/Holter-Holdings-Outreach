@@ -24,6 +24,8 @@ export interface Company {
   andre_lead_date: string | null
   andre_heard_back: string | null
   meeting_priority: 'high' | 'low' | null
+  follow_up_calls: number
+  follow_up_emails: number
   callback_day: string | null
   callback_time: string | null
   created_at: string

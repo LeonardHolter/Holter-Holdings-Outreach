@@ -4,6 +4,9 @@ import { createClient } from '@/lib/supabase/server'
 import type { Company } from '@/types'
 import { Nav } from '@/components/Nav'
 import MeetingCardClient from '@/components/MeetingCardClient'
+import Link from 'next/link'
+
+type PriorityFilter = 'all' | 'high' | 'low' | 'unset'
 
 async function fetchIntroMeetings(): Promise<Company[]> {
   const supabase = await createClient()
@@ -23,8 +26,20 @@ async function fetchIntroMeetings(): Promise<Company[]> {
   })
 }
 
-export default async function MeetingsPage() {
-  const companies = await fetchIntroMeetings()
+export default async function MeetingsPage({ searchParams }: { searchParams: Promise<{ priority?: string }> }) {
+  const { priority: rawPriority } = await searchParams
+  const priority: PriorityFilter =
+    rawPriority === 'high' || rawPriority === 'low' || rawPriority === 'unset' ? rawPriority : 'all'
+  const allCompanies = await fetchIntroMeetings()
+  const highCount = allCompanies.filter(c => c.meeting_priority === 'high').length
+  const lowCount = allCompanies.filter(c => c.meeting_priority === 'low').length
+  const unsetCount = allCompanies.filter(c => !c.meeting_priority).length
+  const companies = allCompanies.filter(c => {
+    if (priority === 'high') return c.meeting_priority === 'high'
+    if (priority === 'low') return c.meeting_priority === 'low'
+    if (priority === 'unset') return !c.meeting_priority
+    return true
+  })
 
   return (
     <div className="flex flex-col h-[100dvh] overflow-hidden bg-gray-950">
@@ -48,6 +63,13 @@ export default async function MeetingsPage() {
             </div>
           </div>
 
+          <div className="flex gap-1 bg-gray-900 border border-gray-800 rounded-xl p-1 w-fit">
+            <FilterLink href="/meetings" active={priority === 'all'} label="All" />
+            <FilterLink href="/meetings?priority=high" active={priority === 'high'} label={`High (${highCount})`} />
+            <FilterLink href="/meetings?priority=low" active={priority === 'low'} label={`Low (${lowCount})`} />
+            <FilterLink href="/meetings?priority=unset" active={priority === 'unset'} label={`Unset (${unsetCount})`} />
+          </div>
+
           {companies.length === 0 ? (
             <div className="text-center py-24 text-gray-600">
               <svg className="w-12 h-12 mx-auto mb-3 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -65,5 +87,18 @@ export default async function MeetingsPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+function FilterLink({ href, active, label }: { href: string; active: boolean; label: string }) {
+  return (
+    <Link
+      href={href}
+      className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+        active ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'
+      }`}
+    >
+      {label}
+    </Link>
   )
 }
