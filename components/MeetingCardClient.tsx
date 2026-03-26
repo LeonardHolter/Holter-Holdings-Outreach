@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { format, parseISO, isPast, isToday } from 'date-fns'
 import { toast } from 'sonner'
 import type { Company } from '@/types'
+import RecordingsPlayer from './RecordingsPlayer'
 
 function formatDate(d: string | null) {
   if (!d) return null
@@ -35,6 +36,15 @@ export default function MeetingCardClient({ company: initial }: { company: Compa
   const [c, setC]           = useState(initial)
   const [saving, setSaving] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [loadingRecordings, setLoadingRecordings] = useState(false)
+  const [recordings, setRecordings] = useState<Array<{
+    id: string
+    called_at: string
+    duration_seconds: number | null
+    streamUrl: string | null
+    called_by: string | null
+  }>>([])
+  const [showRecordings, setShowRecordings] = useState(false)
 
   function copyForAndre() {
     const statePart = c.state ? ` (${c.state})` : ''
@@ -87,6 +97,37 @@ export default function MeetingCardClient({ company: initial }: { company: Compa
     await patch({ meeting_priority: priority })
     if (priority) toast.success(`Set to ${priority} priority`)
     else toast.success('Priority cleared')
+  }
+
+  async function loadRecordings() {
+    if (loadingRecordings) return
+    setLoadingRecordings(true)
+    try {
+      const res = await fetch(`/api/twilio/recordings/${c.id}`)
+      if (!res.ok) throw new Error('Failed to load recordings')
+      const data = await res.json() as Array<{
+        id: string
+        called_at: string
+        duration_seconds: number | null
+        recording_url: string | null
+        called_by: string | null
+      }>
+      setRecordings(
+        (data ?? []).map(r => ({
+          id: r.id,
+          called_at: r.called_at,
+          duration_seconds: r.duration_seconds,
+          called_by: r.called_by,
+          streamUrl: r.recording_url
+            ? `/api/twilio/recordings/stream?url=${encodeURIComponent(r.recording_url)}`
+            : null,
+        }))
+      )
+    } catch {
+      toast.error('Failed to load recordings')
+    } finally {
+      setLoadingRecordings(false)
+    }
   }
 
   const followUpCalls = c.follow_up_calls ?? 0
@@ -318,6 +359,45 @@ export default function MeetingCardClient({ company: initial }: { company: Compa
                 </button>
               ))}
             </div>
+          </div>
+        )}
+      </div>
+
+      {/* Attached recordings for this company */}
+      <div className="pt-2 border-t border-gray-800 space-y-2">
+        <button
+          onClick={async () => {
+            const next = !showRecordings
+            setShowRecordings(next)
+            if (next && recordings.length === 0) await loadRecordings()
+          }}
+          className="w-full flex items-center justify-between px-3 py-2 rounded-xl border border-gray-700 bg-gray-800/50 hover:bg-gray-800 transition-colors text-left"
+        >
+          <span className="text-sm text-gray-300 font-medium">Company call recordings</span>
+          <span className="text-xs text-gray-500">
+            {loadingRecordings ? 'Loading…' : `${recordings.length} clip${recordings.length !== 1 ? 's' : ''}`}
+          </span>
+        </button>
+
+        {showRecordings && (
+          <div className="space-y-2">
+            {loadingRecordings && <p className="text-xs text-gray-500 px-1">Loading recordings…</p>}
+            {!loadingRecordings && recordings.length === 0 && (
+              <p className="text-xs text-gray-500 px-1">No recordings yet for this company.</p>
+            )}
+            {recordings.map((r, idx) => (
+              <div key={r.id} className="bg-gray-800/60 border border-gray-700 rounded-lg p-3 space-y-2">
+                <div className="flex items-center justify-between gap-3 text-xs">
+                  <span className="text-gray-500">#{idx + 1} · {format(parseISO(r.called_at), 'MMM d, yyyy · h:mm a')}</span>
+                  <span className="text-gray-400">{r.called_by ?? 'Unknown caller'}</span>
+                </div>
+                {r.streamUrl ? (
+                  <RecordingsPlayer src={r.streamUrl} />
+                ) : (
+                  <p className="text-xs text-gray-500">Recording URL missing</p>
+                )}
+              </div>
+            ))}
           </div>
         )}
       </div>
