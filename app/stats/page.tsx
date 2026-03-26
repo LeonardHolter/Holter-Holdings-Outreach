@@ -140,15 +140,13 @@ export default async function StatsPage({
   const whoCalledEntries = Object.entries(whoCalledMap).sort((a, b) => b[1] - a[1])
 
   const leaderboardCalls = [...callers].sort((a, b) => b.calls - a.calls).filter(c => c.calls > 0)
-  // Use the SAME call denominator as "Most Calls" to avoid mismatch
-  // between leaderboard cards (e.g. 136 vs 260 for the same person).
-  const leaderboardIntroRate = Object.entries(whoCalledMap)
-    .filter(([, companyCount]) => companyCount >= 50)
-    .map(([name, companyCount]) => ({
+  const leaderboardIntroRate = Object.entries(callVolumeMap)
+    .filter(([, calls]) => calls >= 50)
+    .map(([name, calls]) => ({
       name,
-      companies: companyCount,
+      calls,
       intros: introByCallerMap[name] ?? 0,
-      rate: ((introByCallerMap[name] ?? 0) / companyCount) * 100,
+      rate: ((introByCallerMap[name] ?? 0) / calls) * 100,
     }))
     .sort((a, b) => b.rate - a.rate)
 
@@ -259,7 +257,7 @@ export default async function StatsPage({
                     </div>
                     <span className="text-sm font-bold tabular-nums text-green-400 whitespace-nowrap text-right">
                       {c.rate.toFixed(1)}%
-                      <span className="text-gray-600 font-normal text-xs ml-1">({c.intros}/{c.companies})</span>
+                      <span className="text-gray-600 font-normal text-xs ml-1">({c.intros}/{c.calls})</span>
                     </span>
                   </div>
                 </div>
