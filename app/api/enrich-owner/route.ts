@@ -90,7 +90,7 @@ async function searchWithWeb(
 ): Promise<{ owner: string | null; raw: string }> {
   // Mimic what you'd type on claude.ai — a natural question, not JSON instructions
   const data = await callAnthropic(apiKey, {
-    model: 'claude-sonnet-4-6',
+    model: 'claude-haiku-4-5-20250414',
     max_tokens: 1024,
     tools: [{ type: 'web_search_20250305', name: 'web_search' }],
     messages: [{

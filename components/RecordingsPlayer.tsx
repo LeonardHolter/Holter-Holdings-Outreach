@@ -93,9 +93,9 @@ export default function RecordingsPlayer({ src }: { src: string }) {
     el.currentTime = Math.max(0, Math.min(duration || 9999, el.currentTime + delta))
   }
 
-  function onSeekInput(e: React.ChangeEvent<HTMLInputElement>) {
+  function onSeekInput(e: React.FormEvent<HTMLInputElement>) {
     seekingRef.current = true
-    setCurrent(Number(e.target.value))
+    setCurrent(Number(e.currentTarget.value))
   }
 
   function onSeekCommit(e: React.ChangeEvent<HTMLInputElement>) {
