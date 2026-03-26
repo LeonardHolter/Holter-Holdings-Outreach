@@ -91,8 +91,9 @@ async function searchWithWeb(apiKey: string, companyName: string, location: stri
     messages: [{
       role: 'user',
       content:
-        `Find the owner name of the garage door company "${companyName}"${location}. ` +
-        `return just their full name.`,
+        `Find the owner of the garage door company "${companyName}"${location}. ` +
+        `Search ZoomInfo, Yelp, BBB, and the company's own website. ` +
+        `Tell me just their full name.`,
     }],
   })
 
@@ -133,25 +134,24 @@ export async function POST(request: NextRequest) {
 
   const location = state ? ` in ${state}` : ''
 
-  let rawResponse = ''
+  // Try knowledge first (fast, works on Hobby plan). If it fails, try web search.
   try {
-    console.log(`[enrich-owner] searching: "${companyName}"${location}`)
-    const { owner, raw } = await searchWithWeb(apiKey, companyName, location)
-    rawResponse = raw
-    console.log(`[enrich-owner] web result: "${owner}"`)
-    if (owner) return NextResponse.json({ owner, method: 'web', raw })
+    console.log(`[enrich-owner] knowledge: "${companyName}"${location}`)
+    const { owner, raw } = await searchFromKnowledge(apiKey, companyName, location)
+    console.log(`[enrich-owner] knowledge result: "${owner}"`)
+    if (owner) return NextResponse.json({ owner, method: 'knowledge', raw })
   } catch (err) {
-    console.warn(`[enrich-owner] web-search failed: ${err instanceof Error ? err.message : err}`)
+    console.warn(`[enrich-owner] knowledge failed: ${err instanceof Error ? err.message : err}`)
   }
 
   try {
-    const { owner, raw } = await searchFromKnowledge(apiKey, companyName, location)
-    rawResponse = raw
-    console.log(`[enrich-owner] knowledge result: "${owner}"`)
-    return NextResponse.json({ owner, method: 'knowledge', raw })
+    console.log(`[enrich-owner] web-search: "${companyName}"${location}`)
+    const { owner, raw } = await searchWithWeb(apiKey, companyName, location)
+    console.log(`[enrich-owner] web result: "${owner}"`)
+    return NextResponse.json({ owner, method: 'web', raw })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     console.error(`[enrich-owner] both failed: ${msg}`)
-    return NextResponse.json({ error: msg, raw: rawResponse }, { status: 502 })
+    return NextResponse.json({ error: msg }, { status: 502 })
   }
 }

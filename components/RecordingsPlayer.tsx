@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 
 function fmt(s: number): string {
   if (!isFinite(s) || s < 0) return '0:00'
@@ -11,18 +11,20 @@ function fmt(s: number): string {
 
 export default function RecordingsPlayer({ src }: { src: string }) {
   const audioRef = useRef<HTMLAudioElement>(null)
+  const trackRef = useRef<HTMLDivElement>(null)
   const [playing,  setPlaying]  = useState(false)
   const [current,  setCurrent]  = useState(0)
   const [duration, setDuration] = useState(0)
   const [volume,   setVolume]   = useState(1)
   const [muted,    setMuted]    = useState(false)
+  const [dragging, setDragging] = useState(false)
 
   useEffect(() => {
     const el = audioRef.current
     if (!el) return
     const onPlay  = () => setPlaying(true)
     const onPause = () => setPlaying(false)
-    const onTime  = () => setCurrent(el.currentTime)
+    const onTime  = () => { if (!dragging) setCurrent(el.currentTime) }
     const onMeta  = () => { if (isFinite(el.duration)) setDuration(el.duration) }
     const onEnd   = () => { setPlaying(false); setCurrent(0) }
     el.addEventListener('play',           onPlay)
@@ -39,21 +41,40 @@ export default function RecordingsPlayer({ src }: { src: string }) {
       el.removeEventListener('durationchange', onMeta)
       el.removeEventListener('ended',          onEnd)
     }
-  }, [])
+  }, [dragging])
+
+  const seekToFraction = useCallback((clientX: number) => {
+    const track = trackRef.current
+    const el = audioRef.current
+    if (!track || !el || !duration) return
+    const rect = track.getBoundingClientRect()
+    const frac = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
+    const t = frac * duration
+    el.currentTime = t
+    setCurrent(t)
+  }, [duration])
+
+  // Mouse drag handlers
+  const onPointerDown = useCallback((e: React.PointerEvent) => {
+    e.preventDefault()
+    setDragging(true)
+    seekToFraction(e.clientX)
+
+    const onMove = (ev: PointerEvent) => seekToFraction(ev.clientX)
+    const onUp = () => {
+      setDragging(false)
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }, [seekToFraction])
 
   function toggle() {
     const el = audioRef.current
     if (!el) return
     if (el.paused) el.play().catch(() => {})
     else el.pause()
-  }
-
-  function seek(e: React.ChangeEvent<HTMLInputElement>) {
-    const el = audioRef.current
-    if (!el) return
-    const t = Number(e.target.value)
-    el.currentTime = t
-    setCurrent(t)
   }
 
   function skip(delta: number) {
@@ -89,22 +110,20 @@ export default function RecordingsPlayer({ src }: { src: string }) {
       <div className="flex items-center gap-2 mb-3">
         <span className="text-xs text-gray-400 w-9 text-right tabular-nums shrink-0">{fmt(current)}</span>
 
-        {/* Tall wrapper gives a large touch/click target; visual track is the inner thin bar */}
-        <div className="relative flex-1 h-8 flex items-center cursor-pointer" style={{ minWidth: 0 }}>
+        <div
+          ref={trackRef}
+          onPointerDown={onPointerDown}
+          className="relative flex-1 h-10 flex items-center cursor-pointer touch-none"
+          style={{ minWidth: 0 }}
+        >
           {/* Visual track */}
-          <div className="absolute inset-x-0 h-1.5 rounded-full bg-gray-700 pointer-events-none">
-            <div className="absolute inset-y-0 left-0 rounded-full bg-blue-500" style={{ width: `${pct}%` }} />
+          <div className="absolute inset-x-0 h-2 rounded-full bg-gray-700">
+            <div className="absolute inset-y-0 left-0 rounded-full bg-blue-500 transition-[width] duration-75" style={{ width: `${pct}%` }} />
           </div>
           {/* Thumb */}
           <div
-            className="absolute w-4 h-4 rounded-full bg-white shadow border-2 border-blue-500 pointer-events-none"
+            className={`absolute w-5 h-5 rounded-full bg-white shadow-lg border-2 border-blue-500 transition-transform ${dragging ? 'scale-125' : ''}`}
             style={{ left: `${pct}%`, transform: 'translateX(-50%)' }}
-          />
-          {/* Range input — same size as wrapper so entire height is draggable */}
-          <input
-            type="range" min={0} max={duration || 100} step={0.5} value={current}
-            onChange={seek}
-            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
           />
         </div>
 
@@ -113,7 +132,6 @@ export default function RecordingsPlayer({ src }: { src: string }) {
 
       {/* Controls */}
       <div className="flex items-center gap-2">
-        {/* Skip back */}
         <button
           onClick={() => skip(-10)}
           className="text-xs text-gray-400 hover:text-white transition-colors px-2 py-1 rounded hover:bg-gray-700/50 font-mono"
@@ -121,7 +139,6 @@ export default function RecordingsPlayer({ src }: { src: string }) {
           −10s
         </button>
 
-        {/* Play / Pause */}
         <button
           onClick={toggle}
           className="w-9 h-9 rounded-full bg-blue-600 hover:bg-blue-500 active:scale-95 flex items-center justify-center transition-all shrink-0 shadow"
@@ -138,7 +155,6 @@ export default function RecordingsPlayer({ src }: { src: string }) {
           )}
         </button>
 
-        {/* Skip forward */}
         <button
           onClick={() => skip(10)}
           className="text-xs text-gray-400 hover:text-white transition-colors px-2 py-1 rounded hover:bg-gray-700/50 font-mono"
@@ -148,7 +164,6 @@ export default function RecordingsPlayer({ src }: { src: string }) {
 
         <div className="flex-1" />
 
-        {/* Mute toggle */}
         <button onClick={toggleMute} className="text-gray-500 hover:text-gray-300 transition-colors shrink-0 p-1">
           {muted || volume === 0 ? (
             <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
@@ -161,7 +176,6 @@ export default function RecordingsPlayer({ src }: { src: string }) {
           )}
         </button>
 
-        {/* Volume slider */}
         <input
           type="range" min={0} max={1} step={0.05}
           value={muted ? 0 : volume}
