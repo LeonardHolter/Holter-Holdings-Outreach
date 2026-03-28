@@ -20,7 +20,8 @@ export async function GET() {
         .gte('called_at', todayStart.toISOString()),
       supabase
         .from('companies')
-        .select('calls_leonard, calls_tommaso, calls_john')
+        .select('who_called, amount_of_calls')
+        .not('who_called', 'is', null),
     ])
 
     function tallyToday(rows: Array<{ called_by: string | null }> | null): CallerStats[] {
@@ -35,18 +36,15 @@ export async function GET() {
         .sort((a, b) => b.calls - a.calls)
     }
 
-    const allTimeColumns: Array<{ key: string; name: string }> = [
-      { key: 'calls_leonard', name: 'Leonard' },
-      { key: 'calls_tommaso', name: 'Tommaso' },
-      { key: 'calls_john', name: 'John' },
-    ]
-    const allTime: CallerStats[] = allTimeColumns
-      .map(({ key, name }) => ({
-        name,
-        calls: (allTimeRes.data ?? []).reduce(
-          (sum: number, row: Record<string, number>) => sum + (row[key] ?? 0), 0
-        ),
-      }))
+    // Match exactly how /stats calculates "Most Calls": sum amount_of_calls per who_called
+    const callVolumeMap: Record<string, number> = {}
+    for (const row of (allTimeRes.data ?? []) as Array<{ who_called: string | null; amount_of_calls: number }>) {
+      const name = (row.who_called ?? '').trim()
+      if (!name) continue
+      callVolumeMap[name] = (callVolumeMap[name] ?? 0) + (row.amount_of_calls ?? 0)
+    }
+    const allTime: CallerStats[] = Object.entries(callVolumeMap)
+      .map(([name, calls]) => ({ name, calls }))
       .filter(s => s.calls > 0)
       .sort((a, b) => b.calls - a.calls)
 
