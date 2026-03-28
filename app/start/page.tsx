@@ -60,11 +60,7 @@ function LeaderboardSection({
 
 export default function StartPage() {
   const router = useRouter()
-  const [selected, setSelected] = useState<string | null>(() => {
-    if (typeof window === 'undefined') return null
-    const saved = localStorage.getItem('sessionCaller')
-    return saved && CALLERS.includes(saved as (typeof CALLERS)[number]) ? saved : null
-  })
+  const [selected, setSelected] = useState<string | null>(null)
   const [today, setToday] = useState<CallerStats[]>([])
   const [allTime, setAllTime] = useState<CallerStats[]>([])
   const [loading, setLoading] = useState(true)
