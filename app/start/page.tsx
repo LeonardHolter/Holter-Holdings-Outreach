@@ -79,7 +79,7 @@ export default function StartPage() {
   function handleNext() {
     if (!selected) return
     localStorage.setItem('sessionCaller', selected)
-    router.push('/pipeline')
+    router.push('/call')
   }
 
   return (
