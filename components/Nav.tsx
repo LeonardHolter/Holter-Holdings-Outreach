@@ -8,10 +8,9 @@ const LINKS = [
   { href: '/call',        label: 'Calling'    },
   { href: '/follow-up',   label: 'Follow-up'  },
   { href: '/meetings',    label: 'Leads'      },
-  { href: '/quick-add',   label: 'Quick Add'  },
   { href: '/stats',       label: 'Stats'      },
   { href: '/recordings',  label: 'Recordings' },
-  { href: '/numbers',     label: 'Numbers'    },
+  { href: '/settings',    label: 'Settings'   },
 ]
 
 export function Nav() {
