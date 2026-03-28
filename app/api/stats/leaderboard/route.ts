@@ -19,12 +19,11 @@ export async function GET() {
         .not('called_by', 'is', null)
         .gte('called_at', todayStart.toISOString()),
       supabase
-        .from('call_recordings')
-        .select('called_by')
-        .not('called_by', 'is', null),
+        .from('companies')
+        .select('calls_leonard, calls_tommaso, calls_john')
     ])
 
-    function tally(rows: Array<{ called_by: string | null }> | null): CallerStats[] {
+    function tallyToday(rows: Array<{ called_by: string | null }> | null): CallerStats[] {
       const counts: Record<string, number> = {}
       for (const row of rows ?? []) {
         const name = (row.called_by ?? '').trim()
@@ -36,9 +35,24 @@ export async function GET() {
         .sort((a, b) => b.calls - a.calls)
     }
 
+    const allTimeColumns: Array<{ key: string; name: string }> = [
+      { key: 'calls_leonard', name: 'Leonard' },
+      { key: 'calls_tommaso', name: 'Tommaso' },
+      { key: 'calls_john', name: 'John' },
+    ]
+    const allTime: CallerStats[] = allTimeColumns
+      .map(({ key, name }) => ({
+        name,
+        calls: (allTimeRes.data ?? []).reduce(
+          (sum: number, row: Record<string, number>) => sum + (row[key] ?? 0), 0
+        ),
+      }))
+      .filter(s => s.calls > 0)
+      .sort((a, b) => b.calls - a.calls)
+
     return NextResponse.json({
-      today: tally(todayRes.data),
-      allTime: tally(allTimeRes.data),
+      today: tallyToday(todayRes.data),
+      allTime,
     })
   } catch (err) {
     console.error('[leaderboard]', err)
