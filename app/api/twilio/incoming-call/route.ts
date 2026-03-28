@@ -4,9 +4,6 @@ import { createClient } from '@/lib/supabase/server'
 
 const VoiceResponse = twilio.twiml.VoiceResponse
 
-// Known agent browser-client identities (must match token identity format)
-const AGENT_IDENTITIES = ['leonard', 'tommaso', 'john', 'sunzim', 'daniel', 'ellison']
-
 // Twilio posts here when one of our numbers receives an inbound call.
 //
 // Strategy — Option B (browser first, phones as fallback):
@@ -35,13 +32,7 @@ export async function POST(request: NextRequest) {
 
   const twiml = new VoiceResponse()
 
-  // ── Step 1: ring browser clients (15 s) ──────────────────────────────────
-  const browserDial = twiml.dial({ timeout: 15 })
-  for (const identity of AGENT_IDENTITIES) {
-    browserDial.client(identity)
-  }
-
-  // ── Step 2: ring personal phones (30 s) ──────────────────────────────────
+  // ── Step 1: ring personal phones (30 s) ────────────────────────────────────
   if (forwardNumbers.length > 0) {
     const phoneDial = twiml.dial({ timeout: 30, callerId: to ?? undefined })
     for (const num of forwardNumbers) {
@@ -49,7 +40,7 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // ── Step 3: voicemail ─────────────────────────────────────────────────────
+  // ── Step 2: voicemail ──────────────────────────────────────────────────────
   twiml.say(
     { voice: 'Polly.Joanna', language: 'en-US' },
     "Hi, thanks for calling. No one is available right now — please leave a message after the tone."
