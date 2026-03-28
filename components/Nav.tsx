@@ -4,13 +4,10 @@ import { useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
 
 const LINKS = [
-  { href: '/pipeline',    label: 'Pipeline'   },
   { href: '/call',        label: 'Calling'    },
   { href: '/follow-up',   label: 'Follow-up'  },
-  { href: '/meetings',    label: 'Leads'      },
-  { href: '/stats',       label: 'Stats'      },
   { href: '/recordings',  label: 'Recordings' },
-  { href: '/settings',    label: 'Settings'   },
+  { href: '/settings',    label: 'Menu'       },
 ]
 
 export function Nav() {
