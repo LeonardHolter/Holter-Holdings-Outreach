@@ -23,24 +23,11 @@ function cadenceLabel(totalTouches: number, priority: Company['meeting_priority'
   return `${adjusted} day${adjusted !== 1 ? 's' : ''}`
 }
 
-// ── SMS templates ───────────────────────────────────────────────────────────
+// ── SMS template ────────────────────────────────────────────────────────────
 
-function smsTemplates(c: Company) {
+function meetingTimeTemplate(c: Company): string {
   const name = c.owners_name?.split(' ')[0] || 'there'
-  return [
-    {
-      label: 'Quick check-in',
-      body: `Hey ${name}, just following up on our conversation about ${c.company_name}. Still interested in meeting this week?`,
-    },
-    {
-      label: 'Value nudge',
-      body: `Hi ${name}, wanted to share how we've helped similar garage door companies${c.state ? ` in ${c.state}` : ''}. Would love to set up a quick call to discuss.`,
-    },
-    {
-      label: 'Last attempt',
-      body: `Hi ${name}, I've tried reaching out a few times about ${c.company_name}. If you're still interested, I'd love to set up a quick call — just let me know!`,
-    },
-  ]
+  return `Hey ${name}, this is Leonard from Holter Holdings — we spoke previously about ${c.company_name}. What time works best for you to have a quick meeting?`
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -164,12 +151,11 @@ export default function FollowUpQueue({
     }
   }
 
-  async function handleSendSms(template: { label: string; body: string }) {
+  async function handleSendSms(body: string) {
     if (!current?.phone_number) {
       toast.error('No phone number on file')
       return
     }
-    const body = smsBody || template.body
     if (!body.trim()) return
 
     setSendingSms(true)
@@ -184,7 +170,7 @@ export default function FollowUpQueue({
         }),
       })
       if (!res.ok) throw new Error('SMS failed')
-      toast.success(`SMS sent: "${template.label}"`)
+      toast.success('SMS sent')
 
       const nextEmails = (current.follow_up_emails ?? 0) + 1
       const nextCalls = current.follow_up_calls ?? 0
@@ -395,10 +381,7 @@ export default function FollowUpQueue({
             onClick={() => {
               setShowSms(!showSms)
               if (!showSms && current) {
-                const templates = smsTemplates(current)
-                const touchCount = (current.follow_up_calls ?? 0) + (current.follow_up_emails ?? 0)
-                const pick = touchCount >= 4 ? 2 : touchCount >= 2 ? 1 : 0
-                setSmsBody(templates[pick].body)
+                setSmsBody(meetingTimeTemplate(current))
               }
             }}
             disabled={saving}
@@ -414,38 +397,41 @@ export default function FollowUpQueue({
         {/* SMS panel */}
         {showSms && current && (
           <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-3">
-            <div className="flex gap-2 flex-wrap">
-              {smsTemplates(current).map((t) => (
-                <button
-                  key={t.label}
-                  onClick={() => setSmsBody(t.body)}
-                  className={`text-xs px-2.5 py-1.5 rounded-lg border transition-colors ${
-                    smsBody === t.body
-                      ? 'bg-purple-900/60 border-purple-700 text-purple-300'
-                      : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white hover:border-gray-600'
-                  }`}
-                >
-                  {t.label}
-                </button>
-              ))}
+            <div className="flex gap-2">
+              <button
+                onClick={() => setSmsBody(meetingTimeTemplate(current))}
+                className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
+                  smsBody === meetingTimeTemplate(current)
+                    ? 'bg-purple-900/60 border-purple-700 text-purple-300'
+                    : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white hover:border-gray-600'
+                }`}
+              >
+                Ask for meeting time
+              </button>
+              <button
+                onClick={() => setSmsBody('')}
+                className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
+                  smsBody === '' || (smsBody !== meetingTimeTemplate(current))
+                    ? 'bg-gray-700 border-gray-600 text-white'
+                    : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white hover:border-gray-600'
+                }`}
+              >
+                Custom
+              </button>
             </div>
             <textarea
               value={smsBody}
               onChange={e => setSmsBody(e.target.value)}
               rows={3}
               className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 resize-none focus:outline-none focus:border-purple-600"
-              placeholder="Type your SMS..."
+              placeholder="Write your message..."
             />
             <div className="flex items-center justify-between">
               <span className="text-xs text-gray-500">
                 To: {current.phone_number || 'No number'}
               </span>
               <button
-                onClick={() => {
-                  const templates = smsTemplates(current)
-                  const match = templates.find(t => t.body === smsBody)
-                  handleSendSms(match || { label: 'Custom', body: smsBody })
-                }}
+                onClick={() => handleSendSms(smsBody)}
                 disabled={sendingSms || !smsBody.trim() || !current.phone_number}
                 className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium rounded-lg transition-all disabled:opacity-50 active:scale-[0.98]"
               >
