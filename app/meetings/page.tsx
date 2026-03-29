@@ -80,7 +80,9 @@ export default async function MeetingsPage({ searchParams }: { searchParams: Pro
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {companies.map(c => (
-                <MeetingCardClient key={c.id} company={c} />
+                <Link key={c.id} href={`/meetings/${c.id}`} className="block">
+                  <MeetingCardClient company={c} />
+                </Link>
               ))}
             </div>
           )}
