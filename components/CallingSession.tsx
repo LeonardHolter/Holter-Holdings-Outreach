@@ -9,6 +9,7 @@ import { createClient } from '@/lib/supabase/client'
 
 interface Props {
   initialQueue: Company[]
+  dialNumber?: string
 }
 
 interface PresencePayload {
@@ -90,9 +91,18 @@ function fmtDuration(s: number) {
 const SESSION_ID =
   typeof crypto !== 'undefined' ? crypto.randomUUID() : Math.random().toString(36).slice(2)
 
-export function CallingSession({ initialQueue }: Props) {
+export function CallingSession({ initialQueue, dialNumber }: Props) {
   const [queue, setQueue]             = useState<Company[]>(() => sortQueueByCallback(initialQueue))
-  const [index, setIndex]             = useState(0)
+  const [index, setIndex]             = useState(() => {
+    if (dialNumber) {
+      const normalized = dialNumber.replace(/\D/g, '')
+      const idx = sortQueueByCallback(initialQueue).findIndex(c =>
+        c.phone_number?.replace(/\D/g, '') === normalized
+      )
+      if (idx !== -1) return idx
+    }
+    return 0
+  })
   const [saving, setSaving]           = useState(false)
   const [done, setDone]               = useState(false)
   const [sessionCaller, setSessionCallerState] = useState('')
@@ -336,6 +346,16 @@ export function CallingSession({ initialQueue }: Props) {
       setDeviceReady(false)
     }
   }, [sessionCaller])
+
+  // Auto-dial when navigating from pipeline with ?dial= param
+  const autoDialFired = useRef(false)
+  useEffect(() => {
+    if (!dialNumber || autoDialFired.current || !deviceReady || callStatus !== 'idle' || !phoneNumber) return
+    autoDialFired.current = true
+    // Small delay to let UI settle after device init
+    const t = setTimeout(() => handleCall(), 300)
+    return () => clearTimeout(t)
+  }, [deviceReady, phoneNumber, callStatus]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Call actions ─────────────────────────────────────────────
   async function handleCall() {

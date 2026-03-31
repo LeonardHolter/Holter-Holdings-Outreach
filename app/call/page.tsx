@@ -34,13 +34,13 @@ async function fetchQueue(): Promise<Company[]> {
   ]
 }
 
-export default async function CallPage() {
-  const queue = await fetchQueue()
+export default async function CallPage({ searchParams }: { searchParams: Promise<{ dial?: string }> }) {
+  const [queue, params] = await Promise.all([fetchQueue(), searchParams])
 
   return (
     <div className="flex flex-col h-[100dvh] overflow-hidden bg-gray-950">
       <Nav />
-      <CallingSession initialQueue={queue} />
+      <CallingSession initialQueue={queue} dialNumber={params.dial} />
     </div>
   )
 }

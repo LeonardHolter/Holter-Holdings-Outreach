@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useCallback, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
 import {
   useReactTable,
   getCoreRowModel,
@@ -273,6 +274,7 @@ function DupeFlag({ info, companyName: _companyName }: { info: DupeInfo; company
 }
 
 export function CompanyTable({ initialData }: Props) {
+  const router = useRouter()
   const [data, setData] = useState<Company[]>(initialData)
   const [sorting, setSorting] = useState<SortingState>([{ id: 'google_reviews', desc: true }])
   const [newRow, setNewRow] = useState<Partial<Company> | null>(null)
@@ -448,16 +450,15 @@ export function CompanyTable({ initialData }: Props) {
       cell: ({ row }) => (
         <div className="flex items-center gap-0.5">
           {row.original.phone_number && (
-            <a
-              href={`tel:${row.original.phone_number}`}
+            <button
+              onClick={(e) => { e.stopPropagation(); router.push(`/call?dial=${encodeURIComponent(row.original.phone_number!)}`) }}
               className="text-gray-600 hover:text-green-400 transition-colors p-1 rounded"
               title={`Call ${row.original.phone_number}`}
-              onClick={e => e.stopPropagation()}
             >
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
               </svg>
-            </a>
+            </button>
           )}
           <button
             onClick={() => handleDelete(row.original.id, row.original.company_name)}
