@@ -92,17 +92,18 @@ const SESSION_ID =
   typeof crypto !== 'undefined' ? crypto.randomUUID() : Math.random().toString(36).slice(2)
 
 export function CallingSession({ initialQueue, dialNumber }: Props) {
-  const [queue, setQueue]             = useState<Company[]>(() => sortQueueByCallback(initialQueue))
-  const [index, setIndex]             = useState(() => {
+  const [queue, setQueue]             = useState<Company[]>(() => {
     if (dialNumber) {
       const normalized = dialNumber.replace(/\D/g, '')
-      const idx = sortQueueByCallback(initialQueue).findIndex(c =>
-        c.phone_number?.replace(/\D/g, '') === normalized
-      )
-      if (idx !== -1) return idx
+      const target = initialQueue.find(c => c.phone_number?.replace(/\D/g, '') === normalized)
+      if (target) {
+        const rest = initialQueue.filter(c => c.id !== target.id)
+        return [target, ...sortQueueByCallback(rest)]
+      }
     }
-    return 0
+    return sortQueueByCallback(initialQueue)
   })
+  const [index, setIndex]             = useState(0)
   const [saving, setSaving]           = useState(false)
   const [done, setDone]               = useState(false)
   const [sessionCaller, setSessionCallerState] = useState('')
@@ -137,8 +138,6 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
   const [showCallback, setShowCallback] = useState(false)
   const [state, setState]             = useState('')
   const [companyName, setCompanyName] = useState('')
-  const [searchingOwner, setSearchingOwner] = useState(false)
-  const lookupTargetRef = useRef<string | null>(null) // tracks which company id we're looking up
   const [originalNotes, setOriginalNotes]   = useState('')
   const [noteHistory, setNoteHistory]       = useState<CompanyNote[]>([])
   const [showHistory, setShowHistory]       = useState(false)
@@ -169,48 +168,6 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
 
   const company = queue[index]
 
-  // ── Owner lookup ─────────────────────────────────────────────
-  // companyId is used to guard against stale responses when the user
-  // navigates to the next company before the API returns.
-  const lookupOwner = useCallback(async (companyId: string, name: string, companyState: string, companyPhone: string) => {
-    lookupTargetRef.current = companyId
-    setSearchingOwner(true)
-    const MAX_ATTEMPTS = 3
-    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-      try {
-        const res = await fetch('/api/enrich-owner', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ companyName: name, state: companyState, phoneNumber: companyPhone }),
-        })
-        // If user already moved to another company, discard result
-        if (lookupTargetRef.current !== companyId) return
-        if (res.ok) {
-          const data = await res.json()
-          console.log('[owner-lookup] Claude raw response:', data.raw)
-          console.log('[owner-lookup] Extracted owner:', data.owner, '| Method:', data.method)
-          if (data.owner) {
-            setOwnersName(data.owner)
-            toast.success(`Found owner: ${data.owner}`)
-          }
-          setSearchingOwner(false)
-          return
-        }
-        // Log the actual error body so we can see it in the browser console
-        const errBody = await res.json().catch(() => ({}))
-        console.error('[owner-lookup] API error', res.status, errBody)
-        toast.error(`Owner lookup failed: ${errBody.error ?? res.status}`, { id: 'owner-err' })
-        // Transient server error — wait before retrying
-        if (attempt < MAX_ATTEMPTS) await new Promise(r => setTimeout(r, attempt * 1500))
-      } catch {
-        if (lookupTargetRef.current !== companyId) return
-        if (attempt < MAX_ATTEMPTS) await new Promise(r => setTimeout(r, attempt * 1500))
-      }
-    }
-    // All attempts exhausted
-    if (lookupTargetRef.current === companyId) setSearchingOwner(false)
-  }, [])
-
   const loadCompany = useCallback((c: Company) => {
     setResponse(c.reach_out_response ?? '')
     setNotes(c.notes ?? '')
@@ -229,16 +186,13 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
     setDuration(0)
     setNoteHistory([])
     setShowHistory(false)
-    const noOwner = !c.owners_name || c.owners_name === 'Not found'
-    if (noOwner && c.company_name) lookupOwner(c.id, c.company_name, c.state ?? '', c.phone_number ?? '')
-    // Fetch note history in background
     setLoadingHistory(true)
     fetch(`/api/companies/${c.id}/notes`)
       .then(r => r.json())
       .then((data: CompanyNote[]) => setNoteHistory(Array.isArray(data) ? data : []))
       .catch(() => {})
       .finally(() => setLoadingHistory(false))
-  }, [lookupOwner])
+  }, [])
 
   useState(() => { if (queue[0]) loadCompany(queue[0]) })
 
@@ -869,31 +823,10 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
             </Field>
 
             {/* Owner */}
-            <Field label={searchingOwner ? "Owner's Name (searching…)" : "Owner's Name"}>
-              <div className="relative">
-                <input value={ownersName} onChange={e => setOwnersName(e.target.value)}
-                  placeholder={searchingOwner ? 'Searching…' : 'Unknown'}
-                  className={`w-full bg-gray-800 border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 pr-20 ${
-                    searchingOwner ? 'border-blue-600 animate-pulse' : 'border-gray-700'
-                  }`} />
-                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                  {searchingOwner ? (
-                    <svg className="w-4 h-4 animate-spin text-blue-400" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-                    </svg>
-                  ) : company && (
-                    <button
-                      type="button"
-                      onClick={() => lookupOwner(company.id, companyName || company.company_name, state || company.state || '', phoneNumber || company.phone_number || '')}
-                      className="text-xs px-2 py-0.5 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white transition-colors"
-                      title="Search for owner name"
-                    >
-                      Search
-                    </button>
-                  )}
-                </div>
-              </div>
+            <Field label="Owner's Name">
+              <input value={ownersName} onChange={e => setOwnersName(e.target.value)}
+                placeholder="Unknown"
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500" />
             </Field>
 
             {/* Google reviews */}

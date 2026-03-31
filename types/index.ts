@@ -72,7 +72,7 @@ export interface CompanyFilters {
   introMeetings?: boolean
 }
 
-export const STATES = ['MI', 'MN', 'PA', 'OH', 'WI', 'WA']
+export const STATES = ['IN', 'MI', 'MN', 'OH', 'PA', 'WA', 'WI']
 
 export const RESPONSE_STATUSES = [
   'Did not reach the Owner',
