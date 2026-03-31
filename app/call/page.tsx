@@ -34,13 +34,56 @@ async function fetchQueue(): Promise<Company[]> {
   ]
 }
 
+async function fetchByPhone(phone: string): Promise<Company | null> {
+  const supabase = await createClient()
+  // Try exact match first
+  const { data } = await supabase
+    .from('companies')
+    .select('*')
+    .eq('phone_number', phone)
+    .limit(1)
+    .single()
+  if (data) return data as Company
+
+  // Fallback: try common formats (with/without +1 prefix, parens, dashes)
+  const digits = phone.replace(/\D/g, '')
+  const variants = [
+    digits,
+    `+${digits}`,
+    `+1${digits}`,
+    digits.length === 11 && digits.startsWith('1') ? digits.slice(1) : null,
+    digits.length === 11 && digits.startsWith('1') ? `+${digits}` : null,
+  ].filter(Boolean) as string[]
+
+  for (const v of variants) {
+    const { data: row } = await supabase
+      .from('companies')
+      .select('*')
+      .eq('phone_number', v)
+      .limit(1)
+      .single()
+    if (row) return row as Company
+  }
+  return null
+}
+
 export default async function CallPage({ searchParams }: { searchParams: Promise<{ dial?: string }> }) {
   const [queue, params] = await Promise.all([fetchQueue(), searchParams])
+
+  let finalQueue = queue
+  if (params.dial) {
+    const normalized = params.dial.replace(/\D/g, '')
+    const alreadyInQueue = queue.some(c => c.phone_number?.replace(/\D/g, '') === normalized)
+    if (!alreadyInQueue) {
+      const target = await fetchByPhone(params.dial)
+      if (target) finalQueue = [target, ...queue]
+    }
+  }
 
   return (
     <div className="flex flex-col h-[100dvh] overflow-hidden bg-gray-950">
       <Nav />
-      <CallingSession initialQueue={queue} dialNumber={params.dial} />
+      <CallingSession initialQueue={finalQueue} dialNumber={params.dial} />
     </div>
   )
 }
