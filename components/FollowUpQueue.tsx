@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
 import { format, parseISO, differenceInCalendarDays } from 'date-fns'
 import { toast } from 'sonner'
 import type { Company } from '@/types'
@@ -51,6 +52,7 @@ export default function FollowUpQueue({
   initialDue: Company[]
   upcoming: Company[]
 }) {
+  const router = useRouter()
   const [queue, _setQueue] = useState(initialDue)
   const [idx, setIdx] = useState(0)
   const [saving, setSaving] = useState(false)
@@ -316,9 +318,18 @@ export default function FollowUpQueue({
           <div>
             <p className="text-xs text-gray-600 uppercase tracking-wide font-medium mb-0.5">Phone</p>
             {current.phone_number ? (
-              <a href={`tel:${current.phone_number}`} className="text-sm text-blue-400 hover:text-blue-300 transition-colors font-medium">
-                {current.phone_number}
-              </a>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-300 font-medium">{current.phone_number}</span>
+                <button
+                  onClick={() => router.push(`/call?dial=${encodeURIComponent(current.phone_number!)}`)}
+                  className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-green-700/60 hover:bg-green-600 text-green-300 hover:text-white text-xs font-medium transition-colors"
+                >
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                  </svg>
+                  Call
+                </button>
+              </div>
             ) : (
               <span className="text-sm text-gray-600">—</span>
             )}
