@@ -855,6 +855,13 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
                 {company?.google_reviews?.toLocaleString() ?? '—'}
               </span>
             </Field>
+
+            {/* Times called */}
+            <Field label="Times Called">
+              <span className={`font-semibold text-lg ${(company?.amount_of_calls ?? 0) > 0 ? 'text-yellow-400' : 'text-gray-500'}`}>
+                {company?.amount_of_calls ?? 0}
+              </span>
+            </Field>
           </div>
 
           {/* Notes */}
