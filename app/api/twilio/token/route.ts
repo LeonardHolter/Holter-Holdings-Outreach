@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import crypto from 'crypto'
 import twilio from 'twilio'
 import { createClient } from '@/lib/supabase/server'
 
@@ -16,8 +17,12 @@ function dayOfYear(): number {
 }
 
 /**
- * Returns the best number for this caller today:
- * 1. Base assignment = (callerIndex + dayOfYear) % numCount  → daily rotation
+ * Returns the best number for this caller today.
+ *
+ * Each caller gets a dedicated number so concurrent callers never share
+ * the same outbound caller ID (which causes Twilio to drop the second call).
+ *
+ * 1. Base assignment = (callerIndex + dayOfYear) % numCount → daily rotation
  * 2. If base number is at/over DAILY_CAP, try next numbers in order
  * 3. If all numbers are capped, fall back to base anyway
  */
@@ -72,8 +77,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Twilio env vars missing' }, { status: 500 })
   }
 
-  const { callerName } = await request.json()
-  const identity = (callerName ?? 'user').replace(/\s+/g, '-').toLowerCase()
+  const { callerName, clientId } = await request.json()
+
+  // Build a unique identity per browser tab so two people (or two tabs)
+  // never collide on the same Twilio Device registration.
+  // Twilio only allows ONE registered Device per identity — a second
+  // registration silently unregisters the first, killing its active call.
+  const baseName = (callerName ?? 'user').replace(/\s+/g, '-').toLowerCase()
+  const suffix = clientId
+    ? String(clientId).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 12)
+    : crypto.randomBytes(4).toString('hex')
+  const identity = `${baseName}_${suffix}`
 
   let assignment: Awaited<ReturnType<typeof assignNumber>>
   try {

@@ -252,7 +252,7 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
         const res = await fetch('/api/twilio/token', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ callerName: sessionCaller }),
+          body: JSON.stringify({ callerName: sessionCaller, clientId: SESSION_ID }),
         })
         if (!res.ok) { console.warn('Twilio token failed — calling disabled'); return }
         const { token, callerId: cid, usageToday: usage, allUsage: all } = await res.json()
@@ -260,7 +260,12 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
         setCallerId(cid)
         setUsageToday(usage ?? 0)
         setAllUsage(all ?? [])
-        const device = new Device(token, { logLevel: 1, enableImprovedSignalingErrorPrecision: true })
+        const device = new Device(token, {
+          logLevel: 1,
+          enableImprovedSignalingErrorPrecision: true,
+          // Allow multiple devices under the same identity (safety net if identities collide)
+          allowIncomingWhileBusy: true,
+        })
         // Explicitly request echo cancellation + noise suppression on the mic
         // This is the #1 cause of echo in browser-based VoIP
         if (device.audio) {
