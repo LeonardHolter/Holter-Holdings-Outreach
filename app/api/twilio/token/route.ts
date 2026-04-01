@@ -17,14 +17,17 @@ function dayOfYear(): number {
 }
 
 /**
- * Returns the best number for this caller today.
+ * Assigns a phone number to a caller.
  *
- * Each caller gets a dedicated number so concurrent callers never share
- * the same outbound caller ID (which causes Twilio to drop the second call).
+ * CRITICAL: Each concurrent caller MUST get a different number.
+ * Twilio will not originate a second outbound call from a number
+ * that already has an active call — it drops the second call instantly.
  *
- * 1. Base assignment = (callerIndex + dayOfYear) % numCount → daily rotation
- * 2. If base number is at/over DAILY_CAP, try next numbers in order
- * 3. If all numbers are capped, fall back to base anyway
+ * Strategy:
+ * 1. Each caller gets a dedicated slot: callerIdx % numCount
+ *    (offset by dayOfYear for daily rotation / spam prevention)
+ * 2. If that number is at daily cap, try the next unused number
+ * 3. Reserve the number in Supabase so concurrent callers can't collide
  */
 async function assignNumber(callerName: string): Promise<{
   callerId: string
@@ -40,30 +43,62 @@ async function assignNumber(callerName: string): Promise<{
   const idx       = callerIdx >= 0 ? callerIdx : 0
   const baseIdx   = (idx + dayOfYear()) % numbers.length
 
-  // Fetch today's usage for all numbers in one query
-  const today   = new Date().toISOString().slice(0, 10)
   const supabase = await createClient()
-  const { data } = await supabase
+  const today = new Date().toISOString().slice(0, 10)
+
+  // Fetch today's usage for all numbers
+  const { data: usageData } = await supabase
     .from('number_daily_usage')
     .select('number, dial_count')
     .eq('date', today)
 
   const usageMap: Record<string, number> = {}
-  for (const row of data ?? []) usageMap[row.number] = row.dial_count
+  for (const row of usageData ?? []) usageMap[row.number] = row.dial_count
 
-  // Pick lowest-loaded number starting from base rotation
+  // Fetch numbers currently locked by OTHER callers (active sessions)
+  const { data: lockData } = await supabase
+    .from('number_locks')
+    .select('number, caller_name')
+    .gt('expires_at', new Date().toISOString())
+
+  const lockedByOthers = new Set(
+    (lockData ?? [])
+      .filter(l => l.caller_name.toLowerCase() !== callerName.toLowerCase())
+      .map(l => l.number)
+  )
+
+  // Pick the best available number:
+  // Prefer the caller's dedicated slot, skip numbers locked by others
   let chosenIdx = baseIdx
+  let found = false
   for (let i = 0; i < numbers.length; i++) {
     const candidate = (baseIdx + i) % numbers.length
-    if ((usageMap[numbers[candidate]] ?? 0) < DAILY_CAP) {
+    const num = numbers[candidate]
+    if (!lockedByOthers.has(num) && (usageMap[num] ?? 0) < DAILY_CAP) {
       chosenIdx = candidate
+      found = true
       break
     }
   }
+  // If everything is locked or capped, fall back to base (better than nothing)
+  if (!found) chosenIdx = baseIdx
 
   const chosen = numbers[chosenIdx]
-  const allUsage = numbers.map(n => ({ number: n, count: usageMap[n] ?? 0 }))
 
+  // Lock this number for this caller (2-minute lease, refreshed each call)
+  try {
+    await supabase
+      .from('number_locks')
+      .upsert({
+        number: chosen,
+        caller_name: callerName.toLowerCase(),
+        expires_at: new Date(Date.now() + 2 * 60 * 1000).toISOString(),
+      }, { onConflict: 'number' })
+  } catch {
+    // non-fatal — lock table may not exist yet
+  }
+
+  const allUsage = numbers.map(n => ({ number: n, count: usageMap[n] ?? 0 }))
   return { callerId: chosen, usageToday: usageMap[chosen] ?? 0, dailyCap: DAILY_CAP, allUsage }
 }
 

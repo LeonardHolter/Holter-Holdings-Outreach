@@ -263,21 +263,36 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
         const device = new Device(token, {
           logLevel: 1,
           enableImprovedSignalingErrorPrecision: true,
-          // Allow multiple devices under the same identity (safety net if identities collide)
           allowIncomingWhileBusy: true,
         })
-        // Explicitly request echo cancellation + noise suppression on the mic
-        // This is the #1 cause of echo in browser-based VoIP
+
         if (device.audio) {
           await device.audio.setAudioConstraints({
             echoCancellation: true,
             noiseSuppression: true,
             autoGainControl: true,
           })
+
+          // Pre-initialize the speaker output BEFORE registering.
+          // The _onAddTrack error happens when the SDK's internal
+          // PeerConnection tries to setSinkId on its <audio> element
+          // but no output device has been configured yet.
+          try {
+            await device.audio.speakerDevices.set('default')
+          } catch {
+            // setSinkId not supported or no audio devices — non-fatal
+          }
         }
-        device.on('error', (err: Error) => toast.error(`Twilio: ${err.message}`))
+
+        device.on('error', (err: Error) => {
+          console.error('[TwilioDevice] error:', err)
+          toast.error(`Twilio: ${err.message}`)
+        })
+
         await device.register()
-        // Pre-initialize speaker output to prevent _onAddTrack setSinkId errors
+
+        // Second speaker init after register as a safety net —
+        // some browsers only allow setSinkId after getUserMedia
         device.audio?.speakerDevices.set('default').catch(() => {})
 
         // ── Inbound call handler ──────────────────────────────────
@@ -356,7 +371,6 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
         setCallStatus('connected')
         const sid = call.parameters?.CallSid ?? ''
         setCallSid(sid)
-        // Persist callSid on the company so the recording webhook can match it
         if (company && sid) {
           patchCompany(company.id, { last_call_sid: sid } as Partial<Company>).catch(() => null)
         }
@@ -366,8 +380,8 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
       call.on('disconnect', () => {
         clearInterval(timerRef.current!)
         activeCallRef.current = null
+        if (audioRef.current) { audioRef.current.srcObject = null }
         if (!didConnect) {
-          // Call never connected — bad/unreachable number, reset silently
           setCallStatus('idle')
           toast.error(`Call failed — number may be invalid or unreachable: ${phoneNumber}`)
         } else {
@@ -379,6 +393,7 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
         clearInterval(timerRef.current!)
         setCallStatus('idle')
         activeCallRef.current = null
+        if (audioRef.current) { audioRef.current.srcObject = null }
         toast.error(`Call error: ${err.message}`)
       })
     } catch (err) {
