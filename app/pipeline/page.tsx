@@ -11,10 +11,8 @@ interface PageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }
 
-async function fetchCompanies(filters: CompanyFilters): Promise<Company[]> {
-  const supabase = await createClient()
-
-  let query = supabase.from('companies').select('*').limit(10000)
+function buildQuery(supabase: Awaited<ReturnType<typeof createClient>>, filters: CompanyFilters) {
+  let query = supabase.from('companies').select('*')
 
   if (filters.states && filters.states.length > 0) {
     query = query.in('state', filters.states)
@@ -43,14 +41,25 @@ async function fetchCompanies(filters: CompanyFilters): Promise<Company[]> {
     )
   }
 
-  query = query.order('google_reviews', { ascending: false, nullsFirst: false })
+  return query.order('google_reviews', { ascending: false, nullsFirst: false })
+}
 
-  const { data, error } = await query
-  if (error) {
-    console.error('Error fetching companies:', error)
-    return []
+async function fetchCompanies(filters: CompanyFilters): Promise<Company[]> {
+  const supabase = await createClient()
+  const all: Company[] = []
+  const PAGE = 1000
+  let from = 0
+
+  while (true) {
+    const { data, error } = await buildQuery(supabase, filters).range(from, from + PAGE - 1)
+    if (error) { console.error('Error fetching companies:', error); break }
+    const rows = (data as Company[]) ?? []
+    all.push(...rows)
+    if (rows.length < PAGE) break
+    from += PAGE
   }
-  return (data as Company[]) ?? []
+
+  return all
 }
 
 function parseFilters(sp: Record<string, string | string[] | undefined>): CompanyFilters {

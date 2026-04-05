@@ -6,11 +6,20 @@ import { Nav } from '@/components/Nav'
 
 async function fetchAll(): Promise<Company[]> {
   const supabase = await createClient()
-  const { data } = await supabase
-    .from('companies')
-    .select('amount_of_calls,who_called,loi_sent')
-    .limit(10000)
-  return (data as Company[]) ?? []
+  const all: Company[] = []
+  const PAGE = 1000
+  let from = 0
+  while (true) {
+    const { data } = await supabase
+      .from('companies')
+      .select('amount_of_calls,who_called,loi_sent')
+      .range(from, from + PAGE - 1)
+    const rows = (data as Company[]) ?? []
+    all.push(...rows)
+    if (rows.length < PAGE) break
+    from += PAGE
+  }
+  return all
 }
 
 export default async function StatsPage() {

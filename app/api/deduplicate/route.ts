@@ -9,15 +9,21 @@ function normalizePhone(p: string): string {
 export async function POST() {
   const supabase = await createClient()
 
-  const { data, error } = await supabase
-    .from('companies')
-    .select('*')
-    .order('amount_of_calls', { ascending: false })
-    .limit(10000)
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-
-  const companies = (data as Company[]) ?? []
+  const companies: Company[] = []
+  const PAGE = 1000
+  let from = 0
+  while (true) {
+    const { data, error } = await supabase
+      .from('companies')
+      .select('*')
+      .order('amount_of_calls', { ascending: false })
+      .range(from, from + PAGE - 1)
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    const rows = (data as Company[]) ?? []
+    companies.push(...rows)
+    if (rows.length < PAGE) break
+    from += PAGE
+  }
   const seen = new Map<string, Company>()
   const toDelete: string[] = []
 
