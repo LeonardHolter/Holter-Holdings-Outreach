@@ -5,7 +5,7 @@ import type { Company } from '@/types'
 import { Nav } from '@/components/Nav'
 import FollowUpQueue from '@/components/FollowUpQueue'
 
-async function fetchDueFollowUps(): Promise<Company[]> {
+async function fetchDue(): Promise<{ high: Company[]; low: Company[] }> {
   const supabase = await createClient()
   const today = new Date().toISOString().slice(0, 10)
 
@@ -17,14 +17,13 @@ async function fetchDueFollowUps(): Promise<Company[]> {
     .order('next_reach_out', { ascending: true, nullsFirst: false })
 
   const rows = (data as Company[]) ?? []
-  const rank = (p: Company['meeting_priority']) => (p === 'high' ? 0 : p === 'low' ? 1 : 2)
-  return [...rows].sort((a, b) => {
-    const pr = rank(a.meeting_priority) - rank(b.meeting_priority)
-    if (pr !== 0) return pr
-    const aDate = a.next_reach_out ?? '9999-12-31'
-    const bDate = b.next_reach_out ?? '9999-12-31'
-    return aDate.localeCompare(bDate)
-  })
+  const byDate = (a: Company, b: Company) =>
+    (a.next_reach_out ?? '9999-12-31').localeCompare(b.next_reach_out ?? '9999-12-31')
+
+  return {
+    high: rows.filter(c => c.meeting_priority === 'high').sort(byDate),
+    low: rows.filter(c => c.meeting_priority !== 'high').sort(byDate),
+  }
 }
 
 async function fetchUpcoming(): Promise<Company[]> {
@@ -43,13 +42,13 @@ async function fetchUpcoming(): Promise<Company[]> {
 }
 
 export default async function FollowUpPage() {
-  const [due, upcoming] = await Promise.all([fetchDueFollowUps(), fetchUpcoming()])
+  const [{ high, low }, upcoming] = await Promise.all([fetchDue(), fetchUpcoming()])
 
   return (
     <div className="flex flex-col h-[100dvh] overflow-hidden bg-gray-950">
       <Nav />
       <div className="flex-1 overflow-y-auto">
-        <FollowUpQueue initialDue={due} upcoming={upcoming} />
+        <FollowUpQueue highDue={high} lowDue={low} upcoming={upcoming} />
       </div>
     </div>
   )

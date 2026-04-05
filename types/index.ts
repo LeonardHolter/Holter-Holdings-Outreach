@@ -24,6 +24,8 @@ export interface Company {
   andre_lead_date: string | null
   andre_heard_back: string | null
   meeting_priority: 'high' | 'low' | null
+  loi_sent: boolean
+  loi_sent_date: string | null
   follow_up_calls: number
   follow_up_emails: number
   callback_day: string | null
@@ -77,6 +79,7 @@ export const STATES = ['IN', 'MI', 'MN', 'OH', 'PA', 'WA', 'WI']
 export const RESPONSE_STATUSES = [
   'Did not reach the Owner',
   'Intro-meeting wanted',
+  'NDA received',
   'Owner is not interested',
   'Already acquired',
   'Not a garage door service company',
