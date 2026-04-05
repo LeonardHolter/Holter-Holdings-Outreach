@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
     const introMeetings = searchParams.get('introMeetings')
     if (introMeetings === 'true') filters.introMeetings = true
 
-    let query = supabase.from('companies').select('*')
+    let query = supabase.from('companies').select('*').limit(10000)
 
     if (filters.states && filters.states.length > 0) {
       query = query.in('state', filters.states)

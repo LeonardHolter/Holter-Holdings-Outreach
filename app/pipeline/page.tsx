@@ -14,7 +14,7 @@ interface PageProps {
 async function fetchCompanies(filters: CompanyFilters): Promise<Company[]> {
   const supabase = await createClient()
 
-  let query = supabase.from('companies').select('*')
+  let query = supabase.from('companies').select('*').limit(10000)
 
   if (filters.states && filters.states.length > 0) {
     query = query.in('state', filters.states)

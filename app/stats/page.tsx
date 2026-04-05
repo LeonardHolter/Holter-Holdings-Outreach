@@ -9,6 +9,7 @@ async function fetchAll(): Promise<Company[]> {
   const { data } = await supabase
     .from('companies')
     .select('amount_of_calls,who_called,loi_sent')
+    .limit(10000)
   return (data as Company[]) ?? []
 }
 

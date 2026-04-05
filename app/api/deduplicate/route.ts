@@ -13,6 +13,7 @@ export async function POST() {
     .from('companies')
     .select('*')
     .order('amount_of_calls', { ascending: false })
+    .limit(10000)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
