@@ -12,12 +12,13 @@ async function fetchDue(): Promise<{ high: Company[]; low: Company[] }> {
   const byDate = (a: Company, b: Company) =>
     (a.next_reach_out ?? '9999-12-31').localeCompare(b.next_reach_out ?? '9999-12-31')
 
-  // High priority: always show all, regardless of next_reach_out date
+  // High priority: due today/overdue OR no date set
   const { data: highData } = await supabase
     .from('companies')
     .select('*')
     .eq('reach_out_response', 'Intro-meeting wanted')
     .eq('meeting_priority', 'high')
+    .or(`next_reach_out.lte.${today},next_reach_out.is.null`)
     .order('next_reach_out', { ascending: true, nullsFirst: false })
 
   // Low priority / unset: only show if due today or overdue
