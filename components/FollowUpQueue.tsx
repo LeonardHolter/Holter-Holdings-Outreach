@@ -24,11 +24,6 @@ function cadenceLabel(totalTouches: number, priority: Company['meeting_priority'
   return `${adjusted} day${adjusted !== 1 ? 's' : ''}`
 }
 
-function meetingTimeTemplate(c: Company): string {
-  const name = c.owners_name?.split(' ')[0] || 'there'
-  return `Hey ${name}, this is Leonard from Holter Holdings — we spoke previously about ${c.company_name}. What time works best for you to have a quick meeting?`
-}
-
 function formatDate(d: string | null) {
   if (!d) return '—'
   try { return format(parseISO(d), 'MMM d, yyyy') } catch { return d }
@@ -53,9 +48,6 @@ function QueueSection({
   const router = useRouter()
   const [idx, setIdx] = useState(0)
   const [saving, setSaving] = useState(false)
-  const [showSms, setShowSms] = useState(false)
-  const [smsBody, setSmsBody] = useState('')
-  const [sendingSms, setSendingSms] = useState(false)
   const [showUpcoming, setShowUpcoming] = useState(false)
   const [completedCount, setCompletedCount] = useState(0)
 
@@ -84,8 +76,6 @@ function QueueSection({
   function advance() {
     setCompletedCount(c => c + 1)
     setIdx(i => i + 1)
-    setShowSms(false)
-    setSmsBody('')
   }
 
   async function handleFollowedUp(kind: 'call' | 'email') {
@@ -129,31 +119,6 @@ function QueueSection({
     d.setDate(d.getDate() + days)
     const ok = await patch(current.id, { next_reach_out: d.toISOString().slice(0, 10) })
     if (ok) { toast.success(`Snoozed ${days} day${days !== 1 ? 's' : ''}`); advance() }
-  }
-
-  async function handleSendSms(body: string) {
-    if (!current?.phone_number) { toast.error('No phone number on file'); return }
-    if (!body.trim()) return
-    setSendingSms(true)
-    try {
-      const res = await fetch('/api/twilio/send-sms', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ to: current.phone_number, from: current.phone_number, body: body.trim() }),
-      })
-      if (!res.ok) throw new Error('SMS failed')
-      toast.success('SMS sent')
-      const nextEmails = (current.follow_up_emails ?? 0) + 1
-      const nextCalls = current.follow_up_calls ?? 0
-      const nextDate = nextFollowUpDate(nextCalls + nextEmails, current.meeting_priority)
-      await patch(current.id, {
-        follow_up_emails: nextEmails,
-        next_reach_out: nextDate,
-        last_reach_out: new Date().toISOString().slice(0, 10),
-      })
-      advance()
-    } catch { toast.error('Failed to send SMS') }
-    finally { setSendingSms(false) }
   }
 
   // ── Done state ─────────────────────────────────────────────────────────────
@@ -317,39 +282,14 @@ function QueueSection({
             </svg>
             Called
           </button>
-          <button onClick={() => { setShowSms(!showSms); if (!showSms && current) setSmsBody(meetingTimeTemplate(current)) }} disabled={saving}
+          <button onClick={() => handleFollowedUp('email')} disabled={saving}
             className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-medium text-sm transition-all active:scale-[0.98] disabled:opacity-50">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
             </svg>
-            Send SMS
+            Sent SMS
           </button>
         </div>
-
-        {showSms && current && (
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-3">
-            <div className="flex gap-2">
-              <button onClick={() => setSmsBody(meetingTimeTemplate(current))}
-                className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${smsBody === meetingTimeTemplate(current) ? 'bg-purple-900/60 border-purple-700 text-purple-300' : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white hover:border-gray-600'}`}>
-                Ask for meeting time
-              </button>
-              <button onClick={() => setSmsBody('')}
-                className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${smsBody === '' || smsBody !== meetingTimeTemplate(current) ? 'bg-gray-700 border-gray-600 text-white' : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white hover:border-gray-600'}`}>
-                Custom
-              </button>
-            </div>
-            <textarea value={smsBody} onChange={e => setSmsBody(e.target.value)} rows={3}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 resize-none focus:outline-none focus:border-purple-600"
-              placeholder="Write your message..." />
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-gray-500">To: {current.phone_number || 'No number'}</span>
-              <button onClick={() => handleSendSms(smsBody)} disabled={sendingSms || !smsBody.trim() || !current.phone_number}
-                className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium rounded-lg transition-all disabled:opacity-50 active:scale-[0.98]">
-                {sendingSms ? 'Sending...' : 'Send'}
-              </button>
-            </div>
-          </div>
-        )}
 
         <div className="grid grid-cols-3 gap-2">
           <button onClick={handleMeetingBooked} disabled={saving}
