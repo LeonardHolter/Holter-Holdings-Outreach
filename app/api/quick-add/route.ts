@@ -69,7 +69,7 @@ async function claudeParse(text: string, apiKey: string): Promise<Parsed> {
 
 // ── Route ─────────────────────────────────────────────────────────────────────
 export async function POST(request: NextRequest) {
-  const { text } = await request.json() as { text: string }
+  const { text, added_by } = await request.json() as { text: string; added_by?: string }
   if (!text?.trim()) return NextResponse.json({ error: 'text is required' }, { status: 400 })
 
   const apiKey = process.env.ANTHROPIC_API_KEY
@@ -104,6 +104,7 @@ export async function POST(request: NextRequest) {
       state:              parsed.state,
       google_reviews:     parsed.google_reviews,
       reach_out_response: null,
+      added_by:           added_by ?? null,
     })
     .select()
     .single()

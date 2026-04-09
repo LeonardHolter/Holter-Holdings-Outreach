@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { format, parseISO, isPast, isToday } from 'date-fns'
 import { toast } from 'sonner'
 import type { Company } from '@/types'
@@ -17,7 +17,7 @@ function NextReachOutBadge({ date }: { date: string | null }) {
   const overdue = isPast(parsed) && !isToday(parsed)
   const today   = isToday(parsed)
   return (
-    <span className={`text-sm font-medium ${overdue ? 'text-red-400' : today ? 'text-yellow-400' : 'text-green-400'}`}>
+    <span className={`text-xs font-medium ${overdue ? 'text-red-400' : today ? 'text-yellow-400' : 'text-green-400'}`}>
       {overdue && '⚠ '}{formatDate(date)}
     </span>
   )
@@ -32,10 +32,18 @@ function Detail({ label, children }: { label: string; children: React.ReactNode 
   )
 }
 
+interface Note {
+  id: string
+  note: string
+  caller_name: string | null
+  created_at: string
+}
+
 export default function MeetingCardClient({ company: initial }: { company: Company }) {
   const [c, setC]           = useState(initial)
   const [saving, setSaving] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [expanded, setExpanded] = useState(false)
   const [loadingRecordings, setLoadingRecordings] = useState(false)
   const [recordings, setRecordings] = useState<Array<{
     id: string
@@ -45,6 +53,32 @@ export default function MeetingCardClient({ company: initial }: { company: Compa
     called_by: string | null
   }>>([])
   const [showRecordings, setShowRecordings] = useState(false)
+
+  // Comments state
+  const [notes, setNotes] = useState<Note[]>([])
+  const [notesLoaded, setNotesLoaded] = useState(false)
+  const [loadingNotes, setLoadingNotes] = useState(false)
+  const [newNote, setNewNote] = useState('')
+  const [submittingNote, setSubmittingNote] = useState(false)
+  const noteInputRef = useRef<HTMLTextAreaElement>(null)
+
+  const loadNotes = useCallback(async () => {
+    setLoadingNotes(true)
+    try {
+      const res = await fetch(`/api/companies/${c.id}/notes`)
+      if (!res.ok) throw new Error()
+      setNotes(await res.json())
+    } catch {
+      toast.error('Failed to load comments')
+    } finally {
+      setLoadingNotes(false)
+      setNotesLoaded(true)
+    }
+  }, [c.id])
+
+  useEffect(() => {
+    if (expanded && !notesLoaded) loadNotes()
+  }, [expanded, notesLoaded, loadNotes])
 
   function copyForAndre() {
     const statePart = c.state ? ` (${c.state})` : ''
@@ -135,210 +169,279 @@ export default function MeetingCardClient({ company: initial }: { company: Compa
     await patch({ follow_up_calls: nextCalls, follow_up_emails: nextEmails })
   }
 
+  async function submitNote() {
+    if (!newNote.trim()) return
+    setSubmittingNote(true)
+    try {
+      const caller = typeof window !== 'undefined' ? localStorage.getItem('sessionCaller') : null
+      const res = await fetch(`/api/companies/${c.id}/notes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ note: newNote.trim(), caller_name: caller }),
+      })
+      if (!res.ok) throw new Error()
+      const created: Note = await res.json()
+      setNotes(prev => [created, ...prev])
+      setNewNote('')
+      toast.success('Comment added')
+    } catch {
+      toast.error('Failed to add comment')
+    } finally {
+      setSubmittingNote(false)
+    }
+  }
+
   return (
-    <div className={`border rounded-2xl p-5 space-y-4 transition-all ${
+    <div className={`border rounded-2xl transition-all overflow-hidden ${
       overdue ? 'bg-gray-900 border-red-900/60'
       : today ? 'bg-gray-900 border-yellow-800/60'
       :         'bg-gray-900 border-gray-800'
     }`}>
 
-      {/* Top row */}
-      <div className="flex items-start justify-between gap-3">
+      {/* Collapsed header — always visible */}
+      <div className="flex items-center gap-3 p-4">
         <div className="min-w-0 flex-1">
-          <h2 className="text-base font-semibold truncate text-white">
-            {c.company_name}
-          </h2>
-          {c.state && (
-            <span className="text-xs text-gray-500 font-medium uppercase tracking-wider">{c.state}</span>
-          )}
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <button
-            onClick={copyForAndre}
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-medium transition-all touch-manipulation ${
-              copied
-                ? 'bg-green-900/50 border-green-700 text-green-300'
-                : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white hover:border-gray-500'
-            }`}
-          >
-            {copied ? (
-              <>
-                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                </svg>
-                Copied
-              </>
-            ) : (
-              <>
-                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                </svg>
-                Copy
-              </>
+          <h2 className="text-sm font-semibold truncate text-white">{c.company_name}</h2>
+          <div className="flex items-center gap-2 mt-0.5">
+            {c.state && <span className="text-xs text-gray-500 font-medium uppercase tracking-wider">{c.state}</span>}
+            {c.meeting_priority && (
+              <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                c.meeting_priority === 'high' ? 'bg-red-900/60 text-red-300' : 'bg-blue-900/60 text-blue-300'
+              }`}>{c.meeting_priority}</span>
             )}
-          </button>
-          <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-950/60 border border-green-800/50 rounded-full text-xs text-green-400 font-medium">
-            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-            </svg>
-            Intro wanted
-          </span>
-        </div>
-      </div>
-
-      {/* Details grid */}
-      <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-        <Detail label="Priority">
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setPriority(c.meeting_priority === 'high' ? null : 'high')}
-              disabled={saving}
-              className={`px-2.5 py-1 rounded-lg border text-xs font-medium transition-colors ${
-                c.meeting_priority === 'high'
-                  ? 'bg-red-900/60 border-red-700 text-red-300'
-                  : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-red-300 hover:border-red-700/60'
-              }`}
-            >
-              High
-            </button>
-            <button
-              onClick={() => setPriority(c.meeting_priority === 'low' ? null : 'low')}
-              disabled={saving}
-              className={`px-2.5 py-1 rounded-lg border text-xs font-medium transition-colors ${
-                c.meeting_priority === 'low'
-                  ? 'bg-blue-900/60 border-blue-700 text-blue-300'
-                  : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-blue-300 hover:border-blue-700/60'
-              }`}
-            >
-              Low
-            </button>
-            <button
-              onClick={handleReceivedNda}
-              disabled={saving}
-              className="px-2.5 py-1 rounded-lg border text-xs font-medium transition-colors bg-gray-800 border-gray-700 text-gray-400 hover:text-emerald-300 hover:border-emerald-700/60"
-            >
-              Received NDA
-            </button>
           </div>
-        </Detail>
-
-        <Detail label="Owner">
-          <span className="text-sm text-white">{c.owners_name || '—'}</span>
-        </Detail>
-
-        <Detail label="Phone">
-          {c.phone_number ? (
-            <a href={`tel:${c.phone_number}`} className="text-sm text-blue-400 hover:text-blue-300 transition-colors font-medium">
-              {c.phone_number}
-            </a>
-          ) : (
-            <span className="text-sm text-gray-600">—</span>
-          )}
-        </Detail>
-
-        <Detail label="Last Contact">
-          <span className="text-sm text-gray-300">{formatDate(c.last_reach_out) ?? '—'}</span>
-        </Detail>
-
-        <Detail label="Next Reach Out">
-          <NextReachOutBadge date={c.next_reach_out} />
-        </Detail>
-
-        {c.google_reviews != null && (
-          <Detail label="Google Reviews">
-            <span className="text-sm text-gray-300">{c.google_reviews.toLocaleString()}</span>
-          </Detail>
-        )}
-
-        {c.who_called && (
-          <Detail label="Called By">
-            <span className="text-sm text-gray-300">{c.who_called}</span>
-          </Detail>
-        )}
+        </div>
+        <NextReachOutBadge date={c.next_reach_out} />
+        <button
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); setExpanded(!expanded) }}
+          className="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg border border-gray-700 bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white transition-colors"
+        >
+          <svg className={`w-4 h-4 transition-transform ${expanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
       </div>
 
-      {/* Notes */}
-      {c.notes && (
-        <div className="pt-1 border-t border-gray-800">
-          <p className="text-xs text-gray-500 uppercase tracking-wide font-medium mb-1">Notes</p>
-          <p className="text-sm text-gray-300 whitespace-pre-wrap leading-relaxed">{c.notes}</p>
+      {/* Expanded content */}
+      {expanded && (
+        <div className="px-5 pb-5 space-y-4 border-t border-gray-800">
+
+          {/* Actions row */}
+          <div className="flex items-center gap-2 pt-4 flex-wrap">
+            <button
+              onClick={copyForAndre}
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-medium transition-all ${
+                copied
+                  ? 'bg-green-900/50 border-green-700 text-green-300'
+                  : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white hover:border-gray-500'
+              }`}
+            >
+              {copied ? 'Copied!' : 'Copy'}
+            </button>
+            <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-950/60 border border-green-800/50 rounded-full text-xs text-green-400 font-medium">
+              Intro wanted
+            </span>
+          </div>
+
+          {/* Details grid */}
+          <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+            <Detail label="Priority">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setPriority(c.meeting_priority === 'high' ? null : 'high')}
+                  disabled={saving}
+                  className={`px-2.5 py-1 rounded-lg border text-xs font-medium transition-colors ${
+                    c.meeting_priority === 'high'
+                      ? 'bg-red-900/60 border-red-700 text-red-300'
+                      : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-red-300 hover:border-red-700/60'
+                  }`}
+                >
+                  High
+                </button>
+                <button
+                  onClick={() => setPriority(c.meeting_priority === 'low' ? null : 'low')}
+                  disabled={saving}
+                  className={`px-2.5 py-1 rounded-lg border text-xs font-medium transition-colors ${
+                    c.meeting_priority === 'low'
+                      ? 'bg-blue-900/60 border-blue-700 text-blue-300'
+                      : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-blue-300 hover:border-blue-700/60'
+                  }`}
+                >
+                  Low
+                </button>
+                <button
+                  onClick={handleReceivedNda}
+                  disabled={saving}
+                  className="px-2.5 py-1 rounded-lg border text-xs font-medium transition-colors bg-gray-800 border-gray-700 text-gray-400 hover:text-emerald-300 hover:border-emerald-700/60"
+                >
+                  Received NDA
+                </button>
+              </div>
+            </Detail>
+
+            <Detail label="Owner">
+              <span className="text-sm text-white">{c.owners_name || '—'}</span>
+            </Detail>
+
+            <Detail label="Phone">
+              {c.phone_number ? (
+                <a href={`tel:${c.phone_number}`} className="text-sm text-blue-400 hover:text-blue-300 transition-colors font-medium">
+                  {c.phone_number}
+                </a>
+              ) : (
+                <span className="text-sm text-gray-600">—</span>
+              )}
+            </Detail>
+
+            <Detail label="Last Contact">
+              <span className="text-sm text-gray-300">{formatDate(c.last_reach_out) ?? '—'}</span>
+            </Detail>
+
+            <Detail label="Next Reach Out">
+              <NextReachOutBadge date={c.next_reach_out} />
+            </Detail>
+
+            {c.google_reviews != null && (
+              <Detail label="Google Reviews">
+                <span className="text-sm text-gray-300">{c.google_reviews.toLocaleString()}</span>
+              </Detail>
+            )}
+
+            {c.who_called && (
+              <Detail label="Called By">
+                <span className="text-sm text-gray-300">{c.who_called}</span>
+              </Detail>
+            )}
+          </div>
+
+          {/* Notes */}
+          {c.notes && (
+            <div className="pt-1 border-t border-gray-800">
+              <p className="text-xs text-gray-500 uppercase tracking-wide font-medium mb-1">Notes</p>
+              <p className="text-sm text-gray-300 whitespace-pre-wrap leading-relaxed">{c.notes}</p>
+            </div>
+          )}
+
+          {/* Follow-ups */}
+          <div className="pt-2 border-t border-gray-800 space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Follow-ups</p>
+              <span className={`text-xs font-medium ${followUpTotal >= 21 ? 'text-red-400' : 'text-gray-400'}`}>
+                {followUpTotal}/21
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="bg-gray-800/70 border border-gray-700 rounded-lg p-2.5">
+                <p className="text-[11px] text-gray-500 uppercase tracking-wide">Calls</p>
+                <div className="mt-1 flex items-center justify-between">
+                  <span className="text-sm text-white font-semibold tabular-nums">{followUpCalls}</span>
+                  <div className="flex gap-1">
+                    <button onClick={() => bumpFollowUp('call', -1)} disabled={saving || followUpCalls <= 0}
+                      className="w-6 h-6 rounded border border-gray-600 text-gray-300 hover:text-white disabled:opacity-40">−</button>
+                    <button onClick={() => bumpFollowUp('call', 1)} disabled={saving || followUpTotal >= 21}
+                      className="w-6 h-6 rounded border border-gray-600 text-gray-300 hover:text-white disabled:opacity-40">+</button>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-gray-800/70 border border-gray-700 rounded-lg p-2.5">
+                <p className="text-[11px] text-gray-500 uppercase tracking-wide">Emails</p>
+                <div className="mt-1 flex items-center justify-between">
+                  <span className="text-sm text-white font-semibold tabular-nums">{followUpEmails}</span>
+                  <div className="flex gap-1">
+                    <button onClick={() => bumpFollowUp('email', -1)} disabled={saving || followUpEmails <= 0}
+                      className="w-6 h-6 rounded border border-gray-600 text-gray-300 hover:text-white disabled:opacity-40">−</button>
+                    <button onClick={() => bumpFollowUp('email', 1)} disabled={saving || followUpTotal >= 21}
+                      className="w-6 h-6 rounded border border-gray-600 text-gray-300 hover:text-white disabled:opacity-40">+</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Recordings */}
+          <div className="pt-2 border-t border-gray-800 space-y-2">
+            <button
+              onClick={async () => {
+                const next = !showRecordings
+                setShowRecordings(next)
+                if (next && recordings.length === 0) await loadRecordings()
+              }}
+              className="w-full flex items-center justify-between px-3 py-2 rounded-xl border border-gray-700 bg-gray-800/50 hover:bg-gray-800 transition-colors text-left"
+            >
+              <span className="text-sm text-gray-300 font-medium">Company call recordings</span>
+              <span className="text-xs text-gray-500">
+                {loadingRecordings ? 'Loading…' : `${recordings.length} clip${recordings.length !== 1 ? 's' : ''}`}
+              </span>
+            </button>
+
+            {showRecordings && (
+              <div className="space-y-2">
+                {loadingRecordings && <p className="text-xs text-gray-500 px-1">Loading recordings…</p>}
+                {!loadingRecordings && recordings.length === 0 && (
+                  <p className="text-xs text-gray-500 px-1">No recordings yet for this company.</p>
+                )}
+                {recordings.map((r, idx) => (
+                  <div key={r.id} className="bg-gray-800/60 border border-gray-700 rounded-lg p-3 space-y-2">
+                    <div className="flex items-center justify-between gap-3 text-xs">
+                      <span className="text-gray-500">#{idx + 1} · {format(parseISO(r.called_at), 'MMM d, yyyy · h:mm a')}</span>
+                      <span className="text-gray-400">{r.called_by ?? 'Unknown caller'}</span>
+                    </div>
+                    {r.streamUrl ? (
+                      <RecordingsPlayer src={r.streamUrl} />
+                    ) : (
+                      <p className="text-xs text-gray-500">Recording URL missing</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Comments */}
+          <div className="pt-2 border-t border-gray-800 space-y-3">
+            <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Comments</p>
+
+            {/* New comment input */}
+            <div className="flex gap-2">
+              <textarea
+                ref={noteInputRef}
+                value={newNote}
+                onChange={e => setNewNote(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitNote() } }}
+                rows={1}
+                placeholder="Add a comment..."
+                className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 resize-none focus:outline-none focus:border-blue-600"
+              />
+              <button
+                onClick={submitNote}
+                disabled={submittingNote || !newNote.trim()}
+                className="shrink-0 px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-all disabled:opacity-40"
+              >
+                {submittingNote ? '...' : 'Post'}
+              </button>
+            </div>
+
+            {/* Comments list */}
+            {loadingNotes ? (
+              <p className="text-xs text-gray-500">Loading comments...</p>
+            ) : notes.length === 0 ? (
+              <p className="text-xs text-gray-600">No comments yet</p>
+            ) : (
+              <div className="space-y-2 max-h-60 overflow-y-auto">
+                {notes.map(n => (
+                  <div key={n.id} className="bg-gray-800/50 border border-gray-800 rounded-lg px-3 py-2">
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <span className="text-xs font-medium text-gray-300">{n.caller_name ?? 'Unknown'}</span>
+                      <span className="text-[10px] text-gray-600">{format(parseISO(n.created_at), 'MMM d, h:mm a')}</span>
+                    </div>
+                    <p className="text-sm text-gray-300 whitespace-pre-wrap">{n.note}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
-
-      {/* Follow-ups */}
-      <div className="pt-2 border-t border-gray-800 space-y-2">
-        <div className="flex items-center justify-between">
-          <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Follow-ups</p>
-          <span className={`text-xs font-medium ${followUpTotal >= 21 ? 'text-red-400' : 'text-gray-400'}`}>
-            {followUpTotal}/21
-          </span>
-        </div>
-        <div className="grid grid-cols-2 gap-2">
-          <div className="bg-gray-800/70 border border-gray-700 rounded-lg p-2.5">
-            <p className="text-[11px] text-gray-500 uppercase tracking-wide">Calls</p>
-            <div className="mt-1 flex items-center justify-between">
-              <span className="text-sm text-white font-semibold tabular-nums">{followUpCalls}</span>
-              <div className="flex gap-1">
-                <button onClick={() => bumpFollowUp('call', -1)} disabled={saving || followUpCalls <= 0}
-                  className="w-6 h-6 rounded border border-gray-600 text-gray-300 hover:text-white disabled:opacity-40">−</button>
-                <button onClick={() => bumpFollowUp('call', 1)} disabled={saving || followUpTotal >= 21}
-                  className="w-6 h-6 rounded border border-gray-600 text-gray-300 hover:text-white disabled:opacity-40">+</button>
-              </div>
-            </div>
-          </div>
-          <div className="bg-gray-800/70 border border-gray-700 rounded-lg p-2.5">
-            <p className="text-[11px] text-gray-500 uppercase tracking-wide">Emails</p>
-            <div className="mt-1 flex items-center justify-between">
-              <span className="text-sm text-white font-semibold tabular-nums">{followUpEmails}</span>
-              <div className="flex gap-1">
-                <button onClick={() => bumpFollowUp('email', -1)} disabled={saving || followUpEmails <= 0}
-                  className="w-6 h-6 rounded border border-gray-600 text-gray-300 hover:text-white disabled:opacity-40">−</button>
-                <button onClick={() => bumpFollowUp('email', 1)} disabled={saving || followUpTotal >= 21}
-                  className="w-6 h-6 rounded border border-gray-600 text-gray-300 hover:text-white disabled:opacity-40">+</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Attached recordings for this company */}
-      <div className="pt-2 border-t border-gray-800 space-y-2">
-        <button
-          onClick={async () => {
-            const next = !showRecordings
-            setShowRecordings(next)
-            if (next && recordings.length === 0) await loadRecordings()
-          }}
-          className="w-full flex items-center justify-between px-3 py-2 rounded-xl border border-gray-700 bg-gray-800/50 hover:bg-gray-800 transition-colors text-left"
-        >
-          <span className="text-sm text-gray-300 font-medium">Company call recordings</span>
-          <span className="text-xs text-gray-500">
-            {loadingRecordings ? 'Loading…' : `${recordings.length} clip${recordings.length !== 1 ? 's' : ''}`}
-          </span>
-        </button>
-
-        {showRecordings && (
-          <div className="space-y-2">
-            {loadingRecordings && <p className="text-xs text-gray-500 px-1">Loading recordings…</p>}
-            {!loadingRecordings && recordings.length === 0 && (
-              <p className="text-xs text-gray-500 px-1">No recordings yet for this company.</p>
-            )}
-            {recordings.map((r, idx) => (
-              <div key={r.id} className="bg-gray-800/60 border border-gray-700 rounded-lg p-3 space-y-2">
-                <div className="flex items-center justify-between gap-3 text-xs">
-                  <span className="text-gray-500">#{idx + 1} · {format(parseISO(r.called_at), 'MMM d, yyyy · h:mm a')}</span>
-                  <span className="text-gray-400">{r.called_by ?? 'Unknown caller'}</span>
-                </div>
-                {r.streamUrl ? (
-                  <RecordingsPlayer src={r.streamUrl} />
-                ) : (
-                  <p className="text-xs text-gray-500">Recording URL missing</p>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
     </div>
   )
 }

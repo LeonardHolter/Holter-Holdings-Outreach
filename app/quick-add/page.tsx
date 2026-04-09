@@ -1,7 +1,10 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Nav } from '@/components/Nav'
+
+const TEAM_MEMBERS = ['Leonard', 'Tommaso', 'John', 'Sunzim', 'Daniel', 'Ellison']
+const STORAGE_KEY = 'quickAddUser'
 
 interface ParsedCompany {
   company_name: string
@@ -68,8 +71,19 @@ export default function QuickAddPage() {
   ])
   const [draft, setDraft] = useState('')
   const [loading, setLoading] = useState(false)
+  const [addedBy, setAddedBy] = useState<string>('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const bottomRef   = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const stored = localStorage.getItem(STORAGE_KEY)
+    if (stored && TEAM_MEMBERS.includes(stored)) setAddedBy(stored)
+  }, [])
+
+  function handleAddedByChange(name: string) {
+    setAddedBy(name)
+    localStorage.setItem(STORAGE_KEY, name)
+  }
 
   function scrollBottom() {
     setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
@@ -89,7 +103,7 @@ export default function QuickAddPage() {
       const res = await fetch('/api/quick-add', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text, added_by: addedBy || null }),
       })
       const data = await res.json()
 
@@ -174,6 +188,24 @@ export default function QuickAddPage() {
 
       {/* Input bar */}
       <div className="border-t border-gray-800 bg-gray-900 px-4 py-3 safe-bottom">
+        <div className="max-w-2xl mx-auto mb-2 flex items-center gap-2">
+          <span className="text-xs text-gray-500 shrink-0">Adding as</span>
+          <div className="flex flex-wrap gap-1.5">
+            {TEAM_MEMBERS.map(name => (
+              <button
+                key={name}
+                onClick={() => handleAddedByChange(name)}
+                className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                  addedBy === name
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-gray-200'
+                }`}
+              >
+                {name}
+              </button>
+            ))}
+          </div>
+        </div>
         <div className="max-w-2xl mx-auto flex gap-2 items-end">
           <textarea
             ref={textareaRef}
