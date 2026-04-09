@@ -82,6 +82,7 @@ export function FilterBar() {
   const states = getArrayParam('states')
   const responses = getArrayParam('responses')
   const whoCalled = getArrayParam('whoCalled')
+  const addedBy = getArrayParam('addedBy')
   const nextReachOutFrom = getParam('nextReachOutFrom')
   const nextReachOutTo = getParam('nextReachOutTo')
   const search = getParam('search')
@@ -101,7 +102,7 @@ export function FilterBar() {
   }, [searchParams, router, pathname])
 
   const hasFilters = states.length > 0 || responses.length > 0 || whoCalled.length > 0 ||
-    nextReachOutFrom || nextReachOutTo || search || notCalled || introMeetings
+    addedBy.length > 0 || nextReachOutFrom || nextReachOutTo || search || notCalled || introMeetings
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -138,6 +139,13 @@ export function FilterBar() {
         options={TEAM_MEMBERS}
         selected={whoCalled}
         onChange={vals => updateParams({ whoCalled: vals.join(',') || null })}
+      />
+
+      <MultiSelect
+        label="Added By"
+        options={TEAM_MEMBERS}
+        selected={addedBy}
+        onChange={vals => updateParams({ addedBy: vals.join(',') || null })}
       />
 
       {/* Date range */}

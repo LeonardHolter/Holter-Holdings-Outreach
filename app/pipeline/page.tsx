@@ -4,6 +4,7 @@ import { Suspense } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import { CompanyTable } from '@/components/CompanyTable'
 import { StatsPanel } from '@/components/StatsPanel'
+import { FilterBar } from '@/components/FilterBar'
 import { Nav } from '@/components/Nav'
 import type { Company, CompanyFilters } from '@/types'
 
@@ -22,6 +23,9 @@ function buildQuery(supabase: Awaited<ReturnType<typeof createClient>>, filters:
   }
   if (filters.whoCalled && filters.whoCalled.length > 0) {
     query = query.in('who_called', filters.whoCalled)
+  }
+  if (filters.addedBy && filters.addedBy.length > 0) {
+    query = query.in('added_by', filters.addedBy)
   }
   if (filters.nextReachOutFrom) {
     query = query.gte('next_reach_out', filters.nextReachOutFrom)
@@ -72,6 +76,7 @@ function parseFilters(sp: Record<string, string | string[] | undefined>): Compan
     states: arr('states'),
     responses: arr('responses'),
     whoCalled: arr('whoCalled'),
+    addedBy: arr('addedBy'),
     nextReachOutFrom: str('nextReachOutFrom'),
     nextReachOutTo: str('nextReachOutTo'),
     search: str('search'),
@@ -86,6 +91,7 @@ async function TableSection({ filters }: { filters: CompanyFilters }) {
   return (
     <>
       <StatsPanel companies={companies} />
+      <FilterBar />
       <CompanyTable initialData={companies} />
     </>
   )

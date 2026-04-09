@@ -30,6 +30,7 @@ export interface Company {
   follow_up_emails: number
   callback_day: string | null
   callback_time: string | null
+  added_by: string | null
   created_at: string
   updated_at: string
 }
@@ -67,6 +68,7 @@ export interface CompanyFilters {
   states?: string[]
   responses?: string[]
   whoCalled?: string[]
+  addedBy?: string[]
   nextReachOutFrom?: string
   nextReachOutTo?: string
   search?: string
