@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "migrate": "node scripts/migrate.mjs",
+    "scrape": "node scripts/scrape-google-maps.mjs",
     "prepare": "husky"
   },
   "dependencies": {

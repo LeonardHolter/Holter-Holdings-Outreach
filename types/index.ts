@@ -31,6 +31,13 @@ export interface Company {
   callback_day: string | null
   callback_time: string | null
   added_by: string | null
+  google_place_id: string | null
+  address: string | null
+  website: string | null
+  latitude: number | null
+  longitude: number | null
+  google_rating: number | null
+  county: string | null
   created_at: string
   updated_at: string
 }
