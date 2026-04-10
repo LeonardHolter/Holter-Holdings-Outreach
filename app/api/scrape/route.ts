@@ -3,7 +3,7 @@ import { scrapeState, STATE_BOUNDS } from '@/lib/scraper'
 import type { ScrapeProgress } from '@/lib/scraper'
 import { createClient } from '@/lib/supabase/server'
 
-export const maxDuration = 900
+export const maxDuration = 300
 
 export async function POST(request: NextRequest) {
   const { state } = (await request.json()) as { state: string }
