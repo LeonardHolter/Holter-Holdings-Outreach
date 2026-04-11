@@ -554,8 +554,7 @@ export function CompanyTable({ initialData, totalCount }: Props) {
       <div className="flex items-center justify-between px-4 py-2 border-b border-gray-800 bg-gray-950 shrink-0">
         <div className="flex items-center gap-3">
           <span className="text-sm text-gray-500">
-            {displayData.length.toLocaleString()} {displayData.length === 1 ? 'company' : 'companies'}
-            {!allLoaded && ` of ${totalCount.toLocaleString()}`}
+            {totalCount.toLocaleString()} {totalCount === 1 ? 'company' : 'companies'}
           </span>
           {!allLoaded && (
             <button

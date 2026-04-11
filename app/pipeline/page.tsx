@@ -44,19 +44,19 @@ interface FetchResult {
 async function fetchCompanies(filters: CompanyFilters): Promise<FetchResult> {
   const supabase = await createClient()
 
-  const statsBase = supabase.from('companies').select('reach_out_response')
-  const statsQuery = applyFilters(statsBase, filters)
-
   const dataQuery = buildQuery(supabase, filters).range(0, INITIAL_PAGE_SIZE - 1)
 
   const [statsResult, dataResult] = await Promise.all([
-    // Fetch only reach_out_response for all rows (lightweight, ~1 column)
     (async () => {
       const all: { reach_out_response: string | null }[] = []
       const PAGE = 5000
       let from = 0
       while (true) {
-        const { data, error } = await statsQuery.range(from, from + PAGE - 1)
+        const q = applyFilters(
+          supabase.from('companies').select('reach_out_response'),
+          filters,
+        )
+        const { data, error } = await q.range(from, from + PAGE - 1)
         if (error) { console.error('Stats query error:', error); break }
         const rows = (data ?? []) as { reach_out_response: string | null }[]
         all.push(...rows)
