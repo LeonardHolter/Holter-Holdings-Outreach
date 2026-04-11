@@ -25,8 +25,12 @@ const RESULT_CAP = 60
 const MAX_DEPTH = 15
 const PAGE_SIZE = 20
 const PAGE_DELAY_MS = 2000
-const REQUEST_DELAY_MS = 150
+const REQUEST_DELAY_MS = 300
 const MAX_RETRIES = 5
+// Force subdivision when a cell spans more than ~2 degrees in either
+// dimension (~200 km). Large bounding boxes cause the API to silently
+// drop results even below the 60-result cap.
+const MAX_CELL_DEGREES = 2.0
 const CHECKPOINT_PATH = resolve(__dirname, '.scrape-checkpoint.json')
 const RESULTS_PATH = resolve(__dirname, 'scrape-results.json')
 
@@ -204,7 +208,11 @@ async function textSearchRect(query, bounds, pageToken) {
       })
 
       if (res.status === 429) {
-        const backoff = Math.min(1000 * Math.pow(2, attempt), 30000)
+        if (attempt === MAX_RETRIES - 1) {
+          console.warn(`  Rate limited after ${MAX_RETRIES} retries, returning empty.`)
+          return { places: [] }
+        }
+        const backoff = Math.min(2000 * Math.pow(2, attempt), 60000)
         console.warn(`  Rate limited, backing off ${backoff}ms...`)
         await sleep(backoff)
         continue
@@ -218,11 +226,12 @@ async function textSearchRect(query, bounds, pageToken) {
       return await res.json()
     } catch (err) {
       if (attempt === MAX_RETRIES - 1) throw err
-      const backoff = Math.min(1000 * Math.pow(2, attempt), 30000)
+      const backoff = Math.min(2000 * Math.pow(2, attempt), 60000)
       console.warn(`  Request failed (attempt ${attempt + 1}/${MAX_RETRIES}): ${err.message}. Retrying in ${backoff}ms...`)
       await sleep(backoff)
     }
   }
+  return { places: [] }
 }
 
 /**
@@ -262,20 +271,44 @@ function subdivide(bounds) {
   ]
 }
 
+function cellTooLarge(bounds) {
+  return (
+    bounds.high.lat - bounds.low.lat > MAX_CELL_DEGREES ||
+    bounds.high.lng - bounds.low.lng > MAX_CELL_DEGREES
+  )
+}
+
 /**
- * Recursively searches an area for a single query. Subdivides when the
- * result cap is hit, guaranteeing complete coverage.
+ * Recursively searches an area for a single query.
+ * Always queries the API first, then decides whether to subdivide based
+ * on both the result count AND the cell size.
+ *  - 0 results → stop (empty area, no point subdividing further)
+ *  - Hit the 60 cap → subdivide (results were truncated)
+ *  - Got results but cell is oversized → subdivide (API may silently truncate)
+ *  - Got results and cell is small → keep them (comprehensive)
  */
 async function searchArea(bounds, query, collectedIds, depth, stats) {
+  const pad = ' '.repeat(depth + 1)
+  const latSpan = (bounds.high.lat - bounds.low.lat).toFixed(2)
+  const lngSpan = (bounds.high.lng - bounds.low.lng).toFixed(2)
+
   const { places, hitCap } = await fetchAllPages(query, bounds)
   stats.apiCalls++
 
-  if (hitCap && depth < MAX_DEPTH) {
-    const quadrants = subdivide(bounds)
-    const depthLabel = ' '.repeat(depth)
-    console.log(`${depthLabel}  Cap hit (${places.length} results) at depth ${depth}, subdividing into 4 quadrants...`)
+  if (places.length === 0) {
+    console.log(`${pad}d${depth}: 0 results (${latSpan}°×${lngSpan}°) — skipping`)
+    return
+  }
+
+  const shouldSubdivide =
+    depth < MAX_DEPTH && (hitCap || cellTooLarge(bounds))
+
+  if (shouldSubdivide) {
+    const reason = hitCap ? `cap hit (${places.length})` : 'cell too large'
+    console.log(`${pad}d${depth}: ${places.length} results (${latSpan}°×${lngSpan}°) — ${reason}, subdividing...`)
     stats.subdivisions++
 
+    const quadrants = subdivide(bounds)
     for (const quad of quadrants) {
       await searchArea(quad, query, collectedIds, depth + 1, stats)
     }
@@ -283,19 +316,22 @@ async function searchArea(bounds, query, collectedIds, depth, stats) {
   }
 
   if (hitCap && depth >= MAX_DEPTH) {
-    console.warn(`  WARNING: Hit result cap at max depth ${depth}. Some results in this micro-area may be missing.`)
-    console.warn(`    Bounds: ${JSON.stringify(bounds)}`)
+    console.warn(`${pad}WARNING: Cap hit at max depth ${depth}. Some results may be missing.`)
+    console.warn(`${pad}  Bounds: ${JSON.stringify(bounds)}`)
   }
 
+  let newCount = 0
   for (const place of places) {
     const id = place.id || place.name
     if (!collectedIds.has(id)) {
       collectedIds.set(id, normalizePlace(place))
       stats.newPlaces++
+      newCount++
     } else {
       stats.duplicates++
     }
   }
+  console.log(`${pad}d${depth}: ${places.length} results, +${newCount} new (${latSpan}°×${lngSpan}°) ✓`)
 }
 
 // ── Normalize a Places API response into a flat record ────────────

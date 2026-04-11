@@ -51,8 +51,12 @@ const RESULT_CAP = 60
 const MAX_DEPTH = 15
 const PAGE_SIZE = 20
 const PAGE_DELAY_MS = 2000
-const REQUEST_DELAY_MS = 150
+const REQUEST_DELAY_MS = 300
 const MAX_RETRIES = 5
+// Force subdivision when a cell spans more than ~2 degrees in either
+// dimension (~200 km). Large bounding boxes cause the API to silently
+// drop results even below the 60-result cap.
+const MAX_CELL_DEGREES = 2.0
 
 const FIELD_MASK = [
   'places.id',
@@ -187,7 +191,8 @@ async function textSearchRect(
       )
 
       if (res.status === 429) {
-        const backoff = Math.min(1000 * 2 ** attempt, 30000)
+        if (attempt === MAX_RETRIES - 1) return { places: [] }
+        const backoff = Math.min(2000 * 2 ** attempt, 60000)
         await sleep(backoff)
         continue
       }
@@ -200,10 +205,11 @@ async function textSearchRect(
       return await res.json()
     } catch (err) {
       if (attempt === MAX_RETRIES - 1) throw err
-      const backoff = Math.min(1000 * 2 ** attempt, 30000)
+      const backoff = Math.min(2000 * 2 ** attempt, 60000)
       await sleep(backoff)
     }
   }
+  return { places: [] }
 }
 
 async function fetchAllPages(
@@ -240,6 +246,13 @@ function subdivide(bounds: Bounds): Bounds[] {
   ]
 }
 
+function cellTooLarge(bounds: Bounds): boolean {
+  return (
+    bounds.high.lat - bounds.low.lat > MAX_CELL_DEGREES ||
+    bounds.high.lng - bounds.low.lng > MAX_CELL_DEGREES
+  )
+}
+
 async function searchArea(
   bounds: Bounds,
   query: string,
@@ -249,10 +262,19 @@ async function searchArea(
   stats: Stats,
   onProgress?: (p: ScrapeProgress) => void,
 ): Promise<void> {
+  // Always query the API first so we can skip empty areas immediately.
   const { places, hitCap } = await fetchAllPages(query, bounds, apiKey)
   stats.apiCalls++
 
-  if (hitCap && depth < MAX_DEPTH) {
+  // Empty area -- no companies here, stop recursing.
+  if (places.length === 0) return
+
+  // Subdivide if we hit the 60-result cap OR if the cell is still large
+  // enough that the API may be silently truncating results.
+  const shouldSubdivide =
+    depth < MAX_DEPTH && (hitCap || cellTooLarge(bounds))
+
+  if (shouldSubdivide) {
     stats.subdivisions++
     onProgress?.({ type: 'subdivision', depth, query })
 

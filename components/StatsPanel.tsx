@@ -2,20 +2,23 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import type { Company } from '@/types'
 
-interface Props {
-  companies: Company[]
+interface Stats {
+  total: number
+  called: number
+  notCalled: number
+  introMeetings: number
+  notInterested: number
 }
 
-export function StatsPanel({ companies }: Props) {
+interface Props {
+  stats: Stats
+}
+
+export function StatsPanel({ stats }: Props) {
   const [collapsed, setCollapsed] = useState(false)
 
-  const total = companies.length
-  const called = companies.filter(c => c.reach_out_response && c.reach_out_response !== 'Not called').length
-  const notCalled = total - called
-  const introMeetings = companies.filter(c => c.reach_out_response === 'Intro-meeting wanted').length
-  const notInterested = companies.filter(c => c.reach_out_response === 'Owner is not interested').length
+  const { total, called, notCalled, introMeetings, notInterested } = stats
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden shrink-0">
       <button
