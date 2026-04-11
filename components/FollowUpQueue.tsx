@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { format, parseISO, differenceInCalendarDays } from 'date-fns'
 import { toast } from 'sonner'
 import type { Company } from '@/types'
+import EmailComposeModal from './EmailComposeModal'
 
 // ── Smart cadence ────────────────────────────────────────────────────────────
 
@@ -59,6 +60,7 @@ function QueueSection({
   const [completedCount, setCompletedCount] = useState(0)
   const [analyzing, setAnalyzing] = useState(false)
   const [enrichment, setEnrichment] = useState<Partial<Company> | null>(null)
+  const [showEmailModal, setShowEmailModal] = useState(false)
 
   const current = queue[idx] as Company | undefined
   const remaining = queue.length - idx
@@ -374,12 +376,12 @@ function QueueSection({
             </svg>
             Called
           </button>
-          <button onClick={() => handleFollowedUp('email')} disabled={saving}
+          <button onClick={() => setShowEmailModal(true)} disabled={saving}
             className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-medium text-sm transition-all active:scale-[0.98] disabled:opacity-50">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
             </svg>
-            Sent SMS
+            Schedule Email
           </button>
         </div>
 
@@ -419,6 +421,17 @@ function QueueSection({
           <button onClick={advance} className="text-xs text-gray-500 hover:text-gray-300 transition-colors px-2 py-1">Skip for now</button>
         </div>
       </div>
+
+      {showEmailModal && current && (
+        <EmailComposeModal
+          company={current}
+          onClose={() => setShowEmailModal(false)}
+          onSent={() => {
+            setShowEmailModal(false)
+            handleFollowedUp('email')
+          }}
+        />
+      )}
     </div>
   )
 }
