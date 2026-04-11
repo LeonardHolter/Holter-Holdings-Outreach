@@ -9,7 +9,7 @@ export async function GET() {
 
     // Supabase JS doesn't support raw GROUP BY, so fetch distinct states
     // with counts using an RPC or a workaround. The simplest approach:
-    // fetch all scraped companies' states and count client-side.
+    // fetch all scraped conies' states and count client-side.
     // For large datasets this is still fast since we only select one column.
     const counts: Record<string, number> = {}
     const PAGE = 1000
