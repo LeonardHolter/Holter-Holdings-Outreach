@@ -12,81 +12,58 @@ interface PageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }
 
-function applyFilters<T extends { in: (...a: never[]) => T; eq: (...a: never[]) => T; gte: (...a: never[]) => T; lte: (...a: never[]) => T; or: (...a: never[]) => T }>(query: T, filters: CompanyFilters): T {
-  if (filters.states?.length) query = query.in('state' as never, filters.states as never)
-  if (filters.responses?.length) query = query.in('reach_out_response' as never, filters.responses as never)
-  if (filters.whoCalled?.length) query = query.in('who_called' as never, filters.whoCalled as never)
-  if (filters.addedBy?.length) query = query.in('added_by' as never, filters.addedBy as never)
-  if (filters.nextReachOutFrom) query = query.gte('next_reach_out' as never, filters.nextReachOutFrom as never)
-  if (filters.nextReachOutTo) query = query.lte('next_reach_out' as never, filters.nextReachOutTo as never)
-  if (filters.notCalled) query = query.eq('reach_out_response' as never, 'Not called' as never)
-  else if (filters.introMeetings) query = query.eq('reach_out_response' as never, 'Intro-meeting wanted' as never)
+function buildQuery(supabase: Awaited<ReturnType<typeof createClient>>, filters: CompanyFilters) {
+  let query = supabase.from('companies').select('*')
+
+  if (filters.states && filters.states.length > 0) {
+    query = query.in('state', filters.states)
+  }
+  if (filters.responses && filters.responses.length > 0) {
+    query = query.in('reach_out_response', filters.responses)
+  }
+  if (filters.whoCalled && filters.whoCalled.length > 0) {
+    query = query.in('who_called', filters.whoCalled)
+  }
+  if (filters.addedBy && filters.addedBy.length > 0) {
+    query = query.in('added_by', filters.addedBy)
+  }
+  if (filters.nextReachOutFrom) {
+    query = query.gte('next_reach_out', filters.nextReachOutFrom)
+  }
+  if (filters.nextReachOutTo) {
+    query = query.lte('next_reach_out', filters.nextReachOutTo)
+  }
+  if (filters.notCalled) {
+    query = query.eq('reach_out_response', 'Not called')
+  } else if (filters.introMeetings) {
+    query = query.eq('reach_out_response', 'Intro-meeting wanted')
+  }
   if (filters.search) {
     const term = `%${filters.search}%`
-    query = query.or(`company_name.ilike.${term},owners_name.ilike.${term},email.ilike.${term},notes.ilike.${term}` as never)
+    query = query.or(
+      `company_name.ilike.${term},owners_name.ilike.${term},email.ilike.${term},notes.ilike.${term}`
+    )
   }
-  return query
+
+  return query.order('google_reviews', { ascending: false, nullsFirst: false })
 }
 
-function buildQuery(supabase: Awaited<ReturnType<typeof createClient>>, filters: CompanyFilters) {
-  const query = supabase.from('companies').select('*')
-  return applyFilters(query, filters).order('google_reviews', { ascending: false, nullsFirst: false })
-}
-
-const INITIAL_PAGE_SIZE = 500
-
-interface FetchResult {
-  companies: Company[]
-  totalCount: number
-  stats: { total: number; called: number; notCalled: number; introMeetings: number; notInterested: number }
-}
-
-async function fetchCompanies(filters: CompanyFilters): Promise<FetchResult> {
+async function fetchCompanies(filters: CompanyFilters): Promise<Company[]> {
   const supabase = await createClient()
+  const all: Company[] = []
+  const PAGE = 1000
+  let from = 0
 
-  const dataQuery = buildQuery(supabase, filters).range(0, INITIAL_PAGE_SIZE - 1)
-
-  const [statsResult, dataResult] = await Promise.all([
-    (async () => {
-      const all: { reach_out_response: string | null }[] = []
-      const PAGE = 5000
-      let from = 0
-      while (true) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const q = applyFilters(supabase.from('companies').select('reach_out_response') as any, filters)
-        const { data, error } = await q.range(from, from + PAGE - 1)
-        if (error) { console.error('Stats query error:', error); break }
-        const rows = (data ?? []) as { reach_out_response: string | null }[]
-        all.push(...rows)
-        if (rows.length < PAGE) break
-        from += PAGE
-      }
-      return all
-    })(),
-    dataQuery,
-  ])
-
-  if (dataResult.error) {
-    console.error('Error fetching companies:', dataResult.error)
-    return { companies: [], totalCount: 0, stats: { total: 0, called: 0, notCalled: 0, introMeetings: 0, notInterested: 0 } }
+  while (true) {
+    const { data, error } = await buildQuery(supabase, filters).range(from, from + PAGE - 1)
+    if (error) { console.error('Error fetching companies:', error); break }
+    const rows = (data as Company[]) ?? []
+    all.push(...rows)
+    if (rows.length < PAGE) break
+    from += PAGE
   }
 
-  const companies = (dataResult.data as Company[]) ?? []
-  const totalCount = statsResult.length
-
-  let called = 0, introMeetings = 0, notInterested = 0
-  for (const r of statsResult) {
-    const resp = r.reach_out_response
-    if (resp && resp !== 'Not called') called++
-    if (resp === 'Intro-meeting wanted') introMeetings++
-    if (resp === 'Owner is not interested') notInterested++
-  }
-
-  return {
-    companies,
-    totalCount,
-    stats: { total: totalCount, called, notCalled: totalCount - called, introMeetings, notInterested },
-  }
+  return all
 }
 
 function parseFilters(sp: Record<string, string | string[] | undefined>): CompanyFilters {
@@ -109,13 +86,13 @@ function parseFilters(sp: Record<string, string | string[] | undefined>): Compan
 }
 
 async function TableSection({ filters }: { filters: CompanyFilters }) {
-  const { companies, totalCount, stats } = await fetchCompanies(filters)
+  const companies = await fetchCompanies(filters)
 
   return (
     <>
-      <StatsPanel stats={stats} />
+      <StatsPanel companies={companies} />
       <FilterBar />
-      <CompanyTable initialData={companies} totalCount={totalCount} />
+      <CompanyTable initialData={companies} />
     </>
   )
 }

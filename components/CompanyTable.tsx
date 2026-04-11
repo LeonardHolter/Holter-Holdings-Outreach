@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useMemo, useRef } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   useReactTable,
@@ -10,7 +10,6 @@ import {
   createColumnHelper,
   type SortingState,
 } from '@tanstack/react-table'
-import { useVirtualizer } from '@tanstack/react-virtual'
 import { toast } from 'sonner'
 import { isValid, parseISO, isPast, isToday } from 'date-fns'
 import type { Company } from '@/types'
@@ -21,7 +20,6 @@ const col = createColumnHelper<Company>()
 
 interface Props {
   initialData: Company[]
-  totalCount: number
 }
 
 async function patchCompany(id: string, payload: Partial<Company>): Promise<Company> {
@@ -275,7 +273,7 @@ function DupeFlag({ info, companyName: _companyName }: { info: DupeInfo; company
   )
 }
 
-export function CompanyTable({ initialData, totalCount }: Props) {
+export function CompanyTable({ initialData }: Props) {
   const router = useRouter()
   const [data, setData] = useState<Company[]>(initialData)
   const [sorting, setSorting] = useState<SortingState>([{ id: 'google_reviews', desc: true }])
@@ -284,28 +282,6 @@ export function CompanyTable({ initialData, totalCount }: Props) {
   const [newNameError, setNewNameError] = useState(false)
   const [showDupesOnly, setShowDupesOnly] = useState(false)
   const [showDedupeModal, setShowDedupeModal] = useState(false)
-  const [loadingMore, setLoadingMore] = useState(false)
-  const [allLoaded, setAllLoaded] = useState(initialData.length >= totalCount)
-
-  const loadMore = useCallback(async () => {
-    if (loadingMore || allLoaded) return
-    setLoadingMore(true)
-    try {
-      const params = new URLSearchParams(window.location.search)
-      params.set('offset', String(data.length))
-      params.set('limit', '2000')
-      const res = await fetch(`/api/companies?${params}`)
-      if (!res.ok) throw new Error('Failed to load')
-      const json = await res.json()
-      const more = json.companies as Company[]
-      setData(d => [...d, ...more])
-      if (!json.hasMore) setAllLoaded(true)
-    } catch {
-      toast.error('Failed to load more companies')
-    } finally {
-      setLoadingMore(false)
-    }
-  }, [data.length, loadingMore, allLoaded])
 
   // Recompute dupe map whenever data changes
   const dupeMap = useMemo(() => buildDupeMap(data), [data])
@@ -354,23 +330,20 @@ export function CompanyTable({ initialData, totalCount }: Props) {
     setNewNameError(false)
   }
 
-  const handleDelete = useCallback(async (id: string, name: string) => {
+  async function handleDelete(id: string, name: string) {
     if (!confirm(`Delete "${name}"? This cannot be undone.`)) return
-    let prev: Company | undefined
-    setData(d => {
-      prev = d.find(c => c.id === id)
-      return d.filter(c => c.id !== id)
-    })
+    const prev = data.find(c => c.id === id)
+    setData(d => d.filter(c => c.id !== id))
     try {
       await deleteCompanyReq(id)
       toast.success('Deleted')
     } catch {
-      if (prev) setData(d => [prev!, ...d])
+      if (prev) setData(d => [prev, ...d])
       toast.error('Failed to delete')
     }
-  }, [])
+  }
 
-  const columns = useMemo(() => [
+  const columns = [
     col.accessor('company_name', {
       header: 'Company Name',
       size: 260,
@@ -522,8 +495,9 @@ export function CompanyTable({ initialData, totalCount }: Props) {
         )
       },
     }),
-  ], [dupeMap, makeUpdater, handleDelete, router])
+  ]
 
+  // eslint-disable-next-line react-hooks/incompatible-library
   const table = useReactTable({
     data: displayData,
     columns,
@@ -533,38 +507,14 @@ export function CompanyTable({ initialData, totalCount }: Props) {
     getSortedRowModel: getSortedRowModel(),
   })
 
-  const { rows: tableRows } = table.getRowModel()
-  const scrollRef = useRef<HTMLDivElement>(null)
-
-  const rowVirtualizer = useVirtualizer({
-    count: tableRows.length,
-    getScrollElement: () => scrollRef.current,
-    estimateSize: () => 33,
-    overscan: 20,
-  })
-
-  const virtualRows = rowVirtualizer.getVirtualItems()
-  const totalSize = rowVirtualizer.getTotalSize()
-  const paddingTop = virtualRows.length > 0 ? virtualRows[0].start : 0
-  const paddingBottom = virtualRows.length > 0 ? totalSize - virtualRows[virtualRows.length - 1].end : 0
-
   return (
     <div className="flex flex-col h-full">
       {/* Toolbar */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-gray-800 bg-gray-950 shrink-0">
         <div className="flex items-center gap-3">
           <span className="text-sm text-gray-500">
-            {totalCount.toLocaleString()} {totalCount === 1 ? 'company' : 'companies'}
+            {displayData.length.toLocaleString()} {displayData.length === 1 ? 'company' : 'companies'}
           </span>
-          {!allLoaded && (
-            <button
-              onClick={loadMore}
-              disabled={loadingMore}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-blue-700/50 bg-blue-950/20 text-blue-400 hover:bg-blue-950/40 text-xs font-medium transition-colors disabled:opacity-50"
-            >
-              {loadingMore ? 'Loading...' : 'Load all'}
-            </button>
-          )}
           {dupeCount > 0 && (
             <div className="flex items-center gap-1.5">
               <button
@@ -610,7 +560,7 @@ export function CompanyTable({ initialData, totalCount }: Props) {
       </div>
 
       {/* Table */}
-      <div ref={scrollRef} className="overflow-auto flex-1">
+      <div className="overflow-auto flex-1">
         <table className="border-collapse w-max min-w-full text-sm">
           <thead className="sticky top-0 z-10">
             {table.getHeaderGroups().map(hg => (
@@ -669,7 +619,7 @@ export function CompanyTable({ initialData, totalCount }: Props) {
               </tr>
             )}
 
-            {tableRows.length === 0 ? (
+            {table.getRowModel().rows.length === 0 ? (
               <tr>
                 <td colSpan={columns.length} className="text-center py-16 text-gray-500">
                   <div className="flex flex-col items-center gap-2">
@@ -686,44 +636,33 @@ export function CompanyTable({ initialData, totalCount }: Props) {
                 </td>
               </tr>
             ) : (
-              <>
-                {paddingTop > 0 && (
-                  <tr><td colSpan={columns.length} style={{ height: paddingTop, padding: 0, border: 'none' }} /></tr>
-                )}
-                {virtualRows.map(virtualRow => {
-                  const row = tableRows[virtualRow.index]
-                  const isDupe = dupeMap.has(row.original.id)
-                  const rowBg = getRowHighlight(row.original.reach_out_response)
-                  const isEven = virtualRow.index % 2 === 0
-                  return (
-                    <tr
-                      key={row.id}
-                      data-index={virtualRow.index}
-                      ref={rowVirtualizer.measureElement}
-                      className={`border-b transition-colors group ${
-                        isDupe
-                          ? 'border-orange-900/40 bg-orange-950/10 hover:bg-orange-950/20'
-                          : `border-gray-800/60 ${rowBg || (isEven ? 'bg-gray-950' : 'bg-gray-900/40')}`
-                      }`}
-                    >
-                      {row.getVisibleCells().map((cell, cellIdx) => (
-                        <td
-                          key={cell.id}
-                          style={{ width: cell.column.getSize() }}
-                          className={`px-1 py-0.5 border-r border-gray-800/50 align-middle max-w-0 ${
-                            cellIdx === 0 ? 'sticky left-0 z-10 bg-inherit' : ''
-                          }`}
-                        >
-                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                        </td>
-                      ))}
-                    </tr>
-                  )
-                })}
-                {paddingBottom > 0 && (
-                  <tr><td colSpan={columns.length} style={{ height: paddingBottom, padding: 0, border: 'none' }} /></tr>
-                )}
-              </>
+              table.getRowModel().rows.map((row, rowIdx) => {
+                const isDupe = dupeMap.has(row.original.id)
+                const rowBg = getRowHighlight(row.original.reach_out_response)
+                const isEven = rowIdx % 2 === 0
+                return (
+                  <tr
+                    key={row.id}
+                    className={`border-b transition-colors group ${
+                      isDupe
+                        ? 'border-orange-900/40 bg-orange-950/10 hover:bg-orange-950/20'
+                        : `border-gray-800/60 ${rowBg || (isEven ? 'bg-gray-950' : 'bg-gray-900/40')}`
+                    }`}
+                  >
+                    {row.getVisibleCells().map((cell, cellIdx) => (
+                      <td
+                        key={cell.id}
+                        style={{ width: cell.column.getSize() }}
+                        className={`px-1 py-0.5 border-r border-gray-800/50 align-middle max-w-0 ${
+                          cellIdx === 0 ? 'sticky left-0 z-10 bg-inherit' : ''
+                        }`}
+                      >
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </td>
+                    ))}
+                  </tr>
+                )
+              })
             )}
           </tbody>
         </table>
