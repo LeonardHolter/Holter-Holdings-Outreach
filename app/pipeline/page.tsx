@@ -52,10 +52,8 @@ async function fetchCompanies(filters: CompanyFilters): Promise<FetchResult> {
       const PAGE = 5000
       let from = 0
       while (true) {
-        const q = applyFilters(
-          supabase.from('companies').select('reach_out_response'),
-          filters,
-        )
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const q = applyFilters(supabase.from('companies').select('reach_out_response') as any, filters)
         const { data, error } = await q.range(from, from + PAGE - 1)
         if (error) { console.error('Stats query error:', error); break }
         const rows = (data ?? []) as { reach_out_response: string | null }[]
