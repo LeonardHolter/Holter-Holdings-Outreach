@@ -61,6 +61,7 @@ export default function MeetingCardClient({ company: initial }: { company: Compa
   const [newNote, setNewNote] = useState('')
   const [submittingNote, setSubmittingNote] = useState(false)
   const noteInputRef = useRef<HTMLTextAreaElement>(null)
+  const [analyzing, setAnalyzing] = useState(false)
 
   const loadNotes = useCallback(async () => {
     setLoadingNotes(true)
@@ -191,6 +192,33 @@ export default function MeetingCardClient({ company: initial }: { company: Compa
     }
   }
 
+  async function handleAnalyze() {
+    if (analyzing) return
+    setAnalyzing(true)
+    try {
+      const res = await fetch(`/api/companies/${c.id}/enrich`, { method: 'POST' })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({ error: 'Unknown error' }))
+        throw new Error(body.error || `HTTP ${res.status}`)
+      }
+      const data = await res.json()
+      setC(prev => ({ ...prev, ...data.company }))
+      const fmt = (n: number) => n >= 1e6 ? `$${(n / 1e6).toFixed(1)}M` : `$${(n / 1e3).toFixed(0)}K`
+      toast.success(`Revenue: ${fmt(data.estimated_revenue_low)}–${fmt(data.estimated_revenue_high)}/yr (${data.revenue_confidence})`)
+    } catch (err) {
+      toast.error(`Analysis failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    } finally {
+      setAnalyzing(false)
+    }
+  }
+
+  function formatRevenue(n: number | null) {
+    if (!n) return '?'
+    if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`
+    if (n >= 1_000) return `$${(n / 1_000).toFixed(0)}K`
+    return `$${n}`
+  }
+
   return (
     <div className={`border rounded-2xl transition-all overflow-hidden ${
       overdue ? 'bg-gray-900 border-red-900/60'
@@ -237,6 +265,34 @@ export default function MeetingCardClient({ company: initial }: { company: Compa
               }`}
             >
               {copied ? 'Copied!' : 'Copy'}
+            </button>
+            <button
+              onClick={handleAnalyze}
+              disabled={analyzing || !c.google_place_id}
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-medium transition-all disabled:opacity-40 ${
+                analyzing
+                  ? 'bg-indigo-900/50 border-indigo-700 text-indigo-300'
+                  : c.enriched_at
+                    ? 'bg-indigo-900/40 border-indigo-800/50 text-indigo-300 hover:bg-indigo-900/60'
+                    : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-indigo-300 hover:border-indigo-700/60'
+              }`}
+            >
+              {analyzing ? (
+                <>
+                  <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                  </svg>
+                  Analyzing...
+                </>
+              ) : (
+                <>
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                  </svg>
+                  {c.enriched_at ? 'Re-analyze' : 'Analyze'}
+                </>
+              )}
             </button>
             <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-950/60 border border-green-800/50 rounded-full text-xs text-green-400 font-medium">
               Intro wanted
@@ -319,6 +375,39 @@ export default function MeetingCardClient({ company: initial }: { company: Compa
             <div className="pt-1 border-t border-gray-800">
               <p className="text-xs text-gray-500 uppercase tracking-wide font-medium mb-1">Notes</p>
               <p className="text-sm text-gray-300 whitespace-pre-wrap leading-relaxed">{c.notes}</p>
+            </div>
+          )}
+
+          {/* Enrichment results */}
+          {c.enriched_at && (
+            <div className="bg-indigo-950/30 border border-indigo-800/40 rounded-xl px-4 py-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-indigo-400 font-medium uppercase tracking-wide">Revenue Estimate</p>
+                {c.revenue_confidence && (
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                    c.revenue_confidence === 'high' ? 'bg-green-900/60 text-green-400'
+                    : c.revenue_confidence === 'medium' ? 'bg-yellow-900/60 text-yellow-400'
+                    : 'bg-gray-800 text-gray-400'
+                  }`}>{c.revenue_confidence} confidence</span>
+                )}
+              </div>
+              <p className="text-lg font-bold text-white">
+                {formatRevenue(c.estimated_revenue_low)}
+                {' – '}
+                {formatRevenue(c.estimated_revenue_high)}
+                <span className="text-sm font-normal text-gray-500"> / year</span>
+              </p>
+              {c.technician_count_estimate != null && (
+                <p className="text-sm text-gray-400">~{c.technician_count_estimate} technicians estimated</p>
+              )}
+              <p className="text-xs text-gray-500 leading-relaxed">{c.enrichment_reasoning}</p>
+              {c.enrichment_signals?.length ? (
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {c.enrichment_signals.map((s, i) => (
+                    <span key={i} className="text-[10px] px-2 py-0.5 rounded-full bg-gray-800 border border-gray-700 text-gray-400">{s}</span>
+                  ))}
+                </div>
+              ) : null}
             </div>
           )}
 

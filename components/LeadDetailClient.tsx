@@ -36,6 +36,7 @@ export default function LeadDetailClient({
   const [saving, setSaving] = useState(false)
   const [copied, setCopied] = useState(false)
   const [copiedFull, setCopiedFull] = useState(false)
+  const [analyzing, setAnalyzing] = useState(false)
 
   const nextDate = c.next_reach_out ? parseISO(c.next_reach_out) : null
   const overdue = nextDate && isPast(nextDate) && !isToday(nextDate)
@@ -96,6 +97,33 @@ export default function LeadDetailClient({
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     })
+  }
+
+  async function handleAnalyze() {
+    if (analyzing) return
+    setAnalyzing(true)
+    try {
+      const res = await fetch(`/api/companies/${c.id}/enrich`, { method: 'POST' })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({ error: 'Unknown error' }))
+        throw new Error(body.error || `HTTP ${res.status}`)
+      }
+      const data = await res.json()
+      setC(prev => ({ ...prev, ...data.company }))
+      const fmt = (n: number) => n >= 1e6 ? `$${(n / 1e6).toFixed(1)}M` : `$${(n / 1e3).toFixed(0)}K`
+      toast.success(`Revenue: ${fmt(data.estimated_revenue_low)}–${fmt(data.estimated_revenue_high)}/yr (${data.revenue_confidence})`)
+    } catch (err) {
+      toast.error(`Analysis failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    } finally {
+      setAnalyzing(false)
+    }
+  }
+
+  function formatRevenue(n: number | null) {
+    if (!n) return '?'
+    if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`
+    if (n >= 1_000) return `$${(n / 1_000).toFixed(0)}K`
+    return `$${n}`
   }
 
   return (
@@ -249,6 +277,69 @@ export default function LeadDetailClient({
           {copied ? 'Copied' : 'Quick copy'}
         </button>
       </div>
+
+      {/* Analyze */}
+      <button
+        onClick={handleAnalyze}
+        disabled={analyzing || !c.google_place_id}
+        className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl border text-sm font-medium transition-all active:scale-[0.98] disabled:opacity-50 ${
+          analyzing
+            ? 'bg-indigo-900/50 border-indigo-700 text-indigo-300'
+            : c.enriched_at
+              ? 'bg-indigo-900/40 border-indigo-800/50 text-indigo-300 hover:bg-indigo-900/60'
+              : 'bg-gray-800 border-gray-700 text-gray-300 hover:text-indigo-300 hover:border-indigo-700/60'
+        }`}
+      >
+        {analyzing ? (
+          <>
+            <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+            </svg>
+            Analyzing...
+          </>
+        ) : (
+          <>
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+            </svg>
+            {c.enriched_at ? 'Re-analyze Lead' : 'Analyze Lead'}
+          </>
+        )}
+      </button>
+
+      {/* Enrichment results */}
+      {c.enriched_at && (
+        <div className="bg-indigo-950/30 border border-indigo-800/40 rounded-2xl px-5 py-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-indigo-400 uppercase tracking-wide">Revenue Estimate</h2>
+            {c.revenue_confidence && (
+              <span className={`text-xs px-2 py-0.5 rounded font-medium ${
+                c.revenue_confidence === 'high' ? 'bg-green-900/60 text-green-400'
+                : c.revenue_confidence === 'medium' ? 'bg-yellow-900/60 text-yellow-400'
+                : 'bg-gray-800 text-gray-400'
+              }`}>{c.revenue_confidence} confidence</span>
+            )}
+          </div>
+          <p className="text-2xl font-bold text-white">
+            {formatRevenue(c.estimated_revenue_low)}
+            {' – '}
+            {formatRevenue(c.estimated_revenue_high)}
+            <span className="text-base font-normal text-gray-500"> / year</span>
+          </p>
+          {c.technician_count_estimate != null && (
+            <p className="text-sm text-gray-400">~{c.technician_count_estimate} technicians estimated</p>
+          )}
+          <p className="text-sm text-gray-500 leading-relaxed">{c.enrichment_reasoning}</p>
+          {c.enrichment_signals?.length ? (
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              {c.enrichment_signals.map((s, i) => (
+                <span key={i} className="text-xs px-2.5 py-0.5 rounded-full bg-gray-800 border border-gray-700 text-gray-400">{s}</span>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      )}
 
       {/* Notes */}
       {(c.notes || notes.length > 0) && (
