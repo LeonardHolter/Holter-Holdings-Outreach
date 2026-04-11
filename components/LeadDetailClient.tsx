@@ -281,7 +281,7 @@ export default function LeadDetailClient({
       {/* Analyze */}
       <button
         onClick={handleAnalyze}
-        disabled={analyzing || !c.google_place_id}
+        disabled={analyzing}
         className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl border text-sm font-medium transition-all active:scale-[0.98] disabled:opacity-50 ${
           analyzing
             ? 'bg-indigo-900/50 border-indigo-700 text-indigo-300'

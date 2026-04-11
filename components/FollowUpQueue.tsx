@@ -334,7 +334,7 @@ function QueueSection({
               </button>
             </div>
           ) : (
-            <button onClick={handleAnalyze} disabled={analyzing || !current.google_place_id}
+            <button onClick={handleAnalyze} disabled={analyzing}
               className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-indigo-900/40 hover:bg-indigo-900/60 border border-indigo-800/50 text-indigo-300 font-medium text-sm transition-all active:scale-[0.98] disabled:opacity-50">
               {analyzing ? (
                 <>

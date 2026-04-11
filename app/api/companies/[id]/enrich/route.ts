@@ -181,14 +181,12 @@ export async function POST(
     return NextResponse.json({ error: 'Company not found' }, { status: 404 })
   }
 
-  if (!company.google_place_id) {
-    return NextResponse.json({ error: 'Company has no google_place_id — cannot fetch reviews' }, { status: 400 })
-  }
-
   const anthropic = new Anthropic({ apiKey: anthropicKey })
 
-  // Step 1: Google Reviews
-  const reviews = await fetchReviews(company.google_place_id, googleApiKey)
+  // Step 1: Google Reviews (skip if no place ID)
+  const reviews = company.google_place_id
+    ? await fetchReviews(company.google_place_id, googleApiKey)
+    : { reviews: [], rating: null, userRatingCount: null }
 
   // Step 2: Web search
   let webIntel = ''

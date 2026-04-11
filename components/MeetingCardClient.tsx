@@ -268,7 +268,7 @@ export default function MeetingCardClient({ company: initial }: { company: Compa
             </button>
             <button
               onClick={handleAnalyze}
-              disabled={analyzing || !c.google_place_id}
+              disabled={analyzing}
               className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-medium transition-all disabled:opacity-40 ${
                 analyzing
                   ? 'bg-indigo-900/50 border-indigo-700 text-indigo-300'

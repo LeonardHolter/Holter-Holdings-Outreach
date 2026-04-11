@@ -512,7 +512,7 @@ export function CompanyTable({ initialData }: Props) {
                 </svg>
               </button>
             )}
-            {isLead && row.original.google_place_id && (
+            {isLead && (
               <button
                 onClick={async (e) => {
                   e.stopPropagation()
