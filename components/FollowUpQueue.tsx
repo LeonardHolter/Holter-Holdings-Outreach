@@ -36,6 +36,13 @@ function overdueDays(d: string | null): number {
 
 // ── Single-queue section ─────────────────────────────────────────────────────
 
+function formatRevenue(n: number | null): string {
+  if (!n) return '?'
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000) return `$${(n / 1_000).toFixed(0)}K`
+  return `$${n}`
+}
+
 function QueueSection({
   queue,
   upcoming,
@@ -50,6 +57,8 @@ function QueueSection({
   const [saving, setSaving] = useState(false)
   const [showUpcoming, setShowUpcoming] = useState(false)
   const [completedCount, setCompletedCount] = useState(0)
+  const [analyzing, setAnalyzing] = useState(false)
+  const [enrichment, setEnrichment] = useState<Partial<Company> | null>(null)
 
   const current = queue[idx] as Company | undefined
   const remaining = queue.length - idx
@@ -76,6 +85,26 @@ function QueueSection({
   function advance() {
     setCompletedCount(c => c + 1)
     setIdx(i => i + 1)
+    setEnrichment(null)
+  }
+
+  async function handleAnalyze() {
+    if (!current || analyzing) return
+    setAnalyzing(true)
+    try {
+      const res = await fetch(`/api/companies/${current.id}/enrich`, { method: 'POST' })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({ error: 'Unknown error' }))
+        throw new Error(body.error || `HTTP ${res.status}`)
+      }
+      const data = await res.json()
+      setEnrichment(data)
+      toast.success('Analysis complete')
+    } catch (err) {
+      toast.error(`Analysis failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    } finally {
+      setAnalyzing(false)
+    }
   }
 
   async function handleFollowedUp(kind: 'call' | 'email') {
@@ -263,6 +292,69 @@ function QueueSection({
             <p className="text-sm text-gray-300 whitespace-pre-wrap leading-relaxed">{current.notes}</p>
           </div>
         )}
+
+        {/* Enrichment / Analyze */}
+        <div className="pt-2 border-t border-gray-800 space-y-3">
+          {(enrichment || current.enriched_at) ? (
+            <div className="bg-indigo-950/30 border border-indigo-800/40 rounded-xl px-4 py-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-indigo-400 font-medium uppercase tracking-wide">Revenue Estimate</p>
+                {(enrichment?.revenue_confidence || current.revenue_confidence) && (
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                    (enrichment?.revenue_confidence || current.revenue_confidence) === 'high' ? 'bg-green-900/60 text-green-400'
+                    : (enrichment?.revenue_confidence || current.revenue_confidence) === 'medium' ? 'bg-yellow-900/60 text-yellow-400'
+                    : 'bg-gray-800 text-gray-400'
+                  }`}>{enrichment?.revenue_confidence || current.revenue_confidence} confidence</span>
+                )}
+              </div>
+              <p className="text-lg font-bold text-white">
+                {formatRevenue(enrichment?.estimated_revenue_low ?? current.estimated_revenue_low ?? null)}
+                {' – '}
+                {formatRevenue(enrichment?.estimated_revenue_high ?? current.estimated_revenue_high ?? null)}
+                <span className="text-sm font-normal text-gray-500"> / year</span>
+              </p>
+              {(enrichment?.technician_count_estimate ?? current.technician_count_estimate) != null && (
+                <p className="text-sm text-gray-400">
+                  ~{enrichment?.technician_count_estimate ?? current.technician_count_estimate} technicians estimated
+                </p>
+              )}
+              <p className="text-xs text-gray-500 leading-relaxed">
+                {enrichment?.enrichment_reasoning || current.enrichment_reasoning}
+              </p>
+              {((enrichment?.enrichment_signals as string[] | undefined) || current.enrichment_signals)?.length ? (
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {((enrichment?.enrichment_signals as string[] | undefined) || current.enrichment_signals || []).map((s, i) => (
+                    <span key={i} className="text-[10px] px-2 py-0.5 rounded-full bg-gray-800 border border-gray-700 text-gray-400">{s}</span>
+                  ))}
+                </div>
+              ) : null}
+              <button onClick={handleAnalyze} disabled={analyzing}
+                className="mt-1 text-xs text-indigo-400 hover:text-indigo-300 transition-colors disabled:opacity-50">
+                {analyzing ? 'Re-analyzing...' : 'Re-analyze'}
+              </button>
+            </div>
+          ) : (
+            <button onClick={handleAnalyze} disabled={analyzing || !current.google_place_id}
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-indigo-900/40 hover:bg-indigo-900/60 border border-indigo-800/50 text-indigo-300 font-medium text-sm transition-all active:scale-[0.98] disabled:opacity-50">
+              {analyzing ? (
+                <>
+                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                  </svg>
+                  Analyzing...
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                  </svg>
+                  Analyze Lead
+                </>
+              )}
+            </button>
+          )}
+        </div>
 
         <div className="pt-2 border-t border-gray-800">
           <p className="text-xs text-gray-500">

@@ -7,11 +7,13 @@ import type { Company } from '@/types'
 
 async function fetchQueue(): Promise<Company[]> {
   const supabase = await createClient()
+  const today = new Date().toISOString().slice(0, 10)
 
   // 1. "Not called" — sorted by google reviews desc
-  // 2. Everyone else (already contacted) — sorted by last_reach_out asc (oldest first)
+  // 2. Previously contacted & due for re-call (next_reach_out <= today or null) —
+  //    sorted by next_reach_out asc so the most overdue surface first.
+  //    Null next_reach_out (legacy rows) are treated as due immediately.
   const [notCalled, previouslyContacted] = await Promise.all([
-    // Include both explicit "Not called" and null (freshly imported companies)
     supabase
       .from('companies')
       .select('*')
@@ -24,7 +26,8 @@ async function fetchQueue(): Promise<Company[]> {
       .not('reach_out_response', 'eq', 'Not called')
       .not('reach_out_response', 'is', null)
       .not('reach_out_response', 'in', '("Owner is not interested","Intro-meeting wanted","Already acquired","Not a garage door service company","Number does not exist")')
-      .order('last_reach_out', { ascending: true, nullsFirst: true })
+      .or(`next_reach_out.lte.${today},next_reach_out.is.null`)
+      .order('next_reach_out', { ascending: true, nullsFirst: true })
       .limit(2000),
   ])
 
@@ -70,13 +73,23 @@ async function fetchByPhone(phone: string): Promise<Company | null> {
 export default async function CallPage({ searchParams }: { searchParams: Promise<{ dial?: string }> }) {
   const [queue, params] = await Promise.all([fetchQueue(), searchParams])
 
+  const TERMINAL_STATUSES = new Set([
+    'Owner is not interested',
+    'Intro-meeting wanted',
+    'Already acquired',
+    'Not a garage door service company',
+    'Number does not exist',
+  ])
+
   let finalQueue = queue
   if (params.dial) {
     const normalized = params.dial.replace(/\D/g, '')
     const alreadyInQueue = queue.some(c => c.phone_number?.replace(/\D/g, '') === normalized)
     if (!alreadyInQueue) {
       const target = await fetchByPhone(params.dial)
-      if (target) finalQueue = [target, ...queue]
+      if (target && !TERMINAL_STATUSES.has(target.reach_out_response ?? '')) {
+        finalQueue = [target, ...queue]
+      }
     }
   }
 

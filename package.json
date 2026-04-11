@@ -8,6 +8,7 @@
     "start": "next start",
     "migrate": "node scripts/migrate.mjs",
     "scrape": "node scripts/scrape-google-maps.mjs",
+    "enrich": "node scripts/enrich-leads.mjs",
     "prepare": "husky"
   },
   "dependencies": {

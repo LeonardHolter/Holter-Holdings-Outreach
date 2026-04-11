@@ -38,6 +38,13 @@ export interface Company {
   longitude: number | null
   google_rating: number | null
   county: string | null
+  estimated_revenue_low: number | null
+  estimated_revenue_high: number | null
+  revenue_confidence: string | null
+  technician_count_estimate: number | null
+  enrichment_reasoning: string | null
+  enrichment_signals: string[] | null
+  enriched_at: string | null
   created_at: string
   updated_at: string
 }

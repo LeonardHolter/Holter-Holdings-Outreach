@@ -79,8 +79,25 @@ function sortQueueByCallback(q: Company[]): Company[] {
     return rb - ra
   })
 }
-function twoWeeksStr() {
-  const d = new Date(); d.setDate(d.getDate() + 14)
+/**
+ * Review-tiered reschedule: 500+ review companies come back faster.
+ *
+ * | Reviews | 1st call | 2nd call | 3rd+ call |
+ * |---------|----------|----------|-----------|
+ * | 500+    | 7 days   | 10 days  | 14 days   |
+ * | < 500   | 14 days  | 14 days  | 21 days   |
+ */
+function nextRescheduleDate(googleReviews: number | null, callCount: number): string {
+  const highValue = (googleReviews ?? 0) >= 500
+  const calls = Math.max(callCount, 1)
+  let days: number
+  if (highValue) {
+    days = calls <= 1 ? 7 : calls <= 2 ? 10 : 14
+  } else {
+    days = calls <= 2 ? 14 : 21
+  }
+  const d = new Date()
+  d.setDate(d.getDate() + days)
   return format(d, 'yyyy-MM-dd')
 }
 function fmtDuration(s: number) {
@@ -494,8 +511,9 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
         payload.reach_out_response = response
         payload.who_called = sessionCaller || null
         payload.last_reach_out = todayStr()
-        payload.next_reach_out = twoWeeksStr()
-        payload.amount_of_calls = (company.amount_of_calls ?? 0) + 1
+        const newCallCount = (company.amount_of_calls ?? 0) + 1
+        payload.next_reach_out = nextRescheduleDate(company.google_reviews, newCallCount)
+        payload.amount_of_calls = newCallCount
       }
       const updated = await patchCompany(company.id, payload)
       setQueue(q => q.map(c => c.id === updated.id ? updated : c))

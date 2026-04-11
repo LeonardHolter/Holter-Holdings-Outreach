@@ -282,6 +282,7 @@ export function CompanyTable({ initialData }: Props) {
   const [newNameError, setNewNameError] = useState(false)
   const [showDupesOnly, setShowDupesOnly] = useState(false)
   const [showDedupeModal, setShowDedupeModal] = useState(false)
+  const [analyzingId, setAnalyzingId] = useState<string | null>(null)
 
   // Recompute dupe map whenever data changes
   const dupeMap = useMemo(() => buildDupeMap(data), [data])
@@ -445,6 +446,35 @@ export function CompanyTable({ initialData }: Props) {
       ),
     }),
     col.display({
+      id: 'revenue',
+      header: 'Revenue Est.',
+      size: 140,
+      cell: ({ row }) => {
+        const c = row.original
+        if (!c.enriched_at) return <span className="text-gray-600 text-xs">—</span>
+        const fmt = (n: number | null) => {
+          if (!n) return '?'
+          if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`
+          if (n >= 1_000) return `$${(n / 1_000).toFixed(0)}K`
+          return `$${n}`
+        }
+        return (
+          <div className="text-xs leading-tight">
+            <span className="text-white font-medium">{fmt(c.estimated_revenue_low)}–{fmt(c.estimated_revenue_high)}</span>
+            <span className="text-gray-500">/yr</span>
+            {c.revenue_confidence && (
+              <span className={`ml-1 ${c.revenue_confidence === 'high' ? 'text-green-400' : c.revenue_confidence === 'medium' ? 'text-yellow-400' : 'text-gray-500'}`}>
+                ({c.revenue_confidence})
+              </span>
+            )}
+            {c.technician_count_estimate != null && (
+              <p className="text-gray-500">~{c.technician_count_estimate} techs</p>
+            )}
+          </div>
+        )
+      },
+    }),
+    col.display({
       id: 'actions',
       size: 100,
       cell: ({ row }) => {
@@ -482,6 +512,52 @@ export function CompanyTable({ initialData }: Props) {
                 </svg>
               </button>
             )}
+            {isLead && row.original.google_place_id && (
+              <button
+                onClick={async (e) => {
+                  e.stopPropagation()
+                  const id = row.original.id
+                  if (analyzingId === id) return
+                  setAnalyzingId(id)
+                  try {
+                    const res = await fetch(`/api/companies/${id}/enrich`, { method: 'POST' })
+                    if (!res.ok) {
+                      const body = await res.json().catch(() => ({ error: 'Unknown error' }))
+                      throw new Error(body.error || `HTTP ${res.status}`)
+                    }
+                    const result = await res.json()
+                    setData(d => d.map(c => c.id === id ? { ...c, ...result.company } : c))
+                    const low = result.estimated_revenue_low >= 1e6 ? `$${(result.estimated_revenue_low / 1e6).toFixed(1)}M` : `$${(result.estimated_revenue_low / 1e3).toFixed(0)}K`
+                    const high = result.estimated_revenue_high >= 1e6 ? `$${(result.estimated_revenue_high / 1e6).toFixed(1)}M` : `$${(result.estimated_revenue_high / 1e3).toFixed(0)}K`
+                    toast.success(`${row.original.company_name}: ${low}–${high}/yr (${result.revenue_confidence})`)
+                  } catch (err) {
+                    toast.error(`Analysis failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
+                  } finally {
+                    setAnalyzingId(null)
+                  }
+                }}
+                className={`p-1 rounded transition-colors ${
+                  analyzingId === row.original.id
+                    ? 'text-indigo-400 animate-pulse'
+                    : row.original.enriched_at
+                      ? 'text-indigo-400 hover:text-indigo-300'
+                      : 'text-gray-600 hover:text-indigo-400'
+                }`}
+                title={row.original.enriched_at ? 'Re-analyze lead' : 'Analyze lead (revenue estimate)'}
+                disabled={analyzingId !== null}
+              >
+                {analyzingId === row.original.id ? (
+                  <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                  </svg>
+                ) : (
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                  </svg>
+                )}
+              </button>
+            )}
             <button
               onClick={() => handleDelete(row.original.id, row.original.company_name)}
               className="text-gray-600 hover:text-red-400 transition-colors p-1 rounded"
@@ -497,7 +573,6 @@ export function CompanyTable({ initialData }: Props) {
     }),
   ]
 
-  // eslint-disable-next-line react-hooks/incompatible-library
   const table = useReactTable({
     data: displayData,
     columns,
