@@ -229,7 +229,14 @@ export default function MeetingCardClient({ company: initial }: { company: Compa
       {/* Collapsed header — always visible */}
       <div className="flex items-center gap-3 p-4">
         <div className="min-w-0 flex-1">
-          <h2 className="text-sm font-semibold truncate text-white">{c.company_name}</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-semibold truncate text-white">{c.company_name}</h2>
+            {c.enriched_at && (
+              <span className="shrink-0 text-xs font-medium text-indigo-300 bg-indigo-900/40 px-1.5 py-0.5 rounded">
+                {formatRevenue(c.estimated_revenue_low)}–{formatRevenue(c.estimated_revenue_high)}
+              </span>
+            )}
+          </div>
           <div className="flex items-center gap-2 mt-0.5">
             {c.state && <span className="text-xs text-gray-500 font-medium uppercase tracking-wider">{c.state}</span>}
             {c.meeting_priority && (
