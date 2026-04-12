@@ -13,7 +13,7 @@ async function fetchAll(): Promise<Company[]> {
   while (true) {
     const { data } = await supabase
       .from('companies')
-      .select('amount_of_calls,who_called,loi_sent,added_by')
+      .select('amount_of_calls,who_called,loi_sent')
       .range(from, from + PAGE - 1)
     const rows = (data as Company[]) ?? []
     all.push(...rows)
@@ -27,7 +27,6 @@ export default async function StatsPage() {
   const companies = await fetchAll()
 
   const callerMap: Record<string, { calls: number; lois: number }> = {}
-  const adderMap: Record<string, number> = {}
   let totalCalls = 0
   let totalLois = 0
 
@@ -42,9 +41,6 @@ export default async function StatsPage() {
       if (c.loi_sent) callerMap[name].lois++
     }
 
-    if (c.added_by) {
-      adderMap[c.added_by] = (adderMap[c.added_by] ?? 0) + 1
-    }
   }
 
   const activeMembers = new Set(TEAM_MEMBERS.map(m => m.toLowerCase()))
@@ -53,11 +49,6 @@ export default async function StatsPage() {
     .map(([name, { calls, lois }]) => ({ name, calls, lois }))
     .filter(c => activeMembers.has(c.name.toLowerCase()))
     .sort((a, b) => b.calls - a.calls)
-
-  const adders = Object.entries(adderMap)
-    .map(([name, count]) => ({ name, count }))
-    .filter(a => activeMembers.has(a.name.toLowerCase()))
-    .sort((a, b) => b.count - a.count)
 
   const maxCalls = callers[0]?.calls ?? 1
   const overallLoiRate = totalCalls > 0 ? (totalLois / totalCalls * 100).toFixed(2) : '0.00'
@@ -114,30 +105,6 @@ export default async function StatsPage() {
           </div>
         </div>
 
-        {/* Quick Adds leaderboard */}
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-          <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wide mb-4">Quick Adds by Person</h2>
-          <div className="space-y-3">
-            {adders.length === 0 ? (
-              <p className="text-gray-600 text-sm">No tracked adds yet</p>
-            ) : adders.map((a, i) => {
-              const barColor = colorMap[a.name.toLowerCase()] ?? 'bg-indigo-500'
-              const maxCount = adders[0].count
-              return (
-                <div key={a.name} className="flex items-center gap-3">
-                  <span className="text-lg w-7 text-center shrink-0">
-                    {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : <span className="text-sm text-gray-600 font-bold">#{i + 1}</span>}
-                  </span>
-                  <span className="text-sm font-medium text-white w-20 shrink-0">{a.name}</span>
-                  <div className="flex-1 bg-gray-800 rounded-full h-2 overflow-hidden">
-                    <div className={`h-2 rounded-full ${barColor}`} style={{ width: `${(a.count / maxCount) * 100}%` }} />
-                  </div>
-                  <span className="text-sm font-bold tabular-nums text-white w-10 text-right shrink-0">{a.count}</span>
-                </div>
-              )
-            })}
-          </div>
-        </div>
       </div>
     </div>
   )
