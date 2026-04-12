@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic'
 
 import { createClient } from '@/lib/supabase/server'
 import type { Company } from '@/types'
+import { TEAM_MEMBERS } from '@/types'
 import { Nav } from '@/components/Nav'
 
 async function fetchAll(): Promise<Company[]> {
@@ -46,12 +47,16 @@ export default async function StatsPage() {
     }
   }
 
+  const activeMembers = new Set(TEAM_MEMBERS.map(m => m.toLowerCase()))
+
   const callers = Object.entries(callerMap)
     .map(([name, { calls, lois }]) => ({ name, calls, lois }))
+    .filter(c => activeMembers.has(c.name.toLowerCase()))
     .sort((a, b) => b.calls - a.calls)
 
   const adders = Object.entries(adderMap)
     .map(([name, count]) => ({ name, count }))
+    .filter(a => activeMembers.has(a.name.toLowerCase()))
     .sort((a, b) => b.count - a.count)
 
   const maxCalls = callers[0]?.calls ?? 1
