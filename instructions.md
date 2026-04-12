@@ -65,8 +65,7 @@ Create this table in Supabase with the following columns. Map directly from the 
 | `calls_tommaso` | `integer` | Default 0 |
 | `calls_john` | `integer` | Default 0 |
 | `calls_sunzim` | `integer` | Default 0 |
-| `calls_daniel` | `integer` | Default 0 |
-| `calls_ellison` | `integer` | Default 0 |
+| `calls_henry` | `integer` | Default 0 |
 | `total_dialed` | `integer` | Default 0 — can be computed or stored |
 | `created_at` | `timestamptz` | Default `now()` |
 | `updated_at` | `timestamptz` | Default `now()` — update via trigger |
@@ -86,7 +85,7 @@ Create a small lookup table to manage the list of callers dynamically:
 | `id` | `uuid` PK |
 | `name` | `text` |
 
-Seed it with: Leonard, Tommaso, John, Sunzim, Daniel, Ellison.
+Seed it with: Leonard, Tommaso, John, Sunzim, Henry.
 
 ### Reference Table: `response_statuses`
 
@@ -160,9 +159,8 @@ Display the following columns in this order (matching the Google Sheet):
 14. Calls: Tommaso
 15. Calls: John
 16. Calls: Sunzim
-17. Calls: Daniel
-18. Calls: Ellison
-19. Total Dialed
+17. Calls: Henry
+18. Total Dialed
 
 ### Inline Editing
 

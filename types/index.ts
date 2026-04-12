@@ -16,8 +16,7 @@ export interface Company {
   calls_tommaso: number
   calls_john: number
   calls_sunzim: number
-  calls_daniel: number
-  calls_ellison: number
+  calls_henry: number
   total_dialed: number
   last_call_sid: string | null
   andre_lead_given: boolean
@@ -113,6 +112,5 @@ export const TEAM_MEMBERS = [
   'Tommaso',
   'John',
   'Sunzim',
-  'Daniel',
-  'Ellison',
+  'Henry',
 ]
