@@ -488,11 +488,28 @@ Dense states (CA, TX, FL) cost more due to heavy subdivision. Sparse states (VT,
 
 ### Environment Variables Required
 
+Add these to `.env.local` in the project root:
+
 ```
-GOOGLE_MAPS_API_KEY=your_key
-NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=eyJ...
+# Google Maps — required for the scraper
+GOOGLE_MAPS_API_KEY=<your Google Maps API key>
+
+# Supabase — required for DB writes (skip for --dry-run)
+NEXT_PUBLIC_SUPABASE_URL=<your Supabase project URL>
+NEXT_PUBLIC_SUPABASE_ANON_KEY=<your Supabase anon key>
+SUPABASE_SERVICE_ROLE_KEY=<your Supabase service role key>
 ```
+
+All values are in `.env.local` (git-ignored). Never commit real keys to the repo.
+
+**Getting a Google Maps API key:**
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Create a project (or select the existing one)
+3. Enable the **Places API (New)** — not the legacy Places API
+4. Go to APIs & Services → Credentials → Create Credentials → API Key
+5. Restrict the key to the "Places API (New)" for safety
+6. Paste it into `.env.local` as `GOOGLE_MAPS_API_KEY`
 
 ### CLI
 
