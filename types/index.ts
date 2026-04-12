@@ -15,7 +15,6 @@ export interface Company {
   calls_leonard: number
   calls_tommaso: number
   calls_john: number
-  calls_sunzim: number
   calls_henry: number
   total_dialed: number
   last_call_sid: string | null
@@ -111,6 +110,5 @@ export const TEAM_MEMBERS = [
   'Leonard',
   'Tommaso',
   'John',
-  'Sunzim',
   'Henry',
 ]

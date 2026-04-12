@@ -22,7 +22,6 @@ CREATE TABLE IF NOT EXISTS companies (
   calls_leonard       integer DEFAULT 0,
   calls_tommaso       integer DEFAULT 0,
   calls_john          integer DEFAULT 0,
-  calls_sunzim        integer DEFAULT 0,
   calls_henry         integer DEFAULT 0,
   total_dialed        integer DEFAULT 0,
   created_at          timestamptz DEFAULT now(),
@@ -94,7 +93,6 @@ INSERT INTO team_members (name) VALUES
   ('Leonard'),
   ('Tommaso'),
   ('John'),
-  ('Sunzim'),
   ('Henry')
 ON CONFLICT (name) DO NOTHING;
 

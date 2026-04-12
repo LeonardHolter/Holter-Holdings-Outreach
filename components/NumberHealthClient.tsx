@@ -16,7 +16,7 @@ interface SpamResult {
   error?: string
 }
 
-const CALLERS = ['Leonard', 'Tommaso', 'John', 'Sunzim', 'Henry']
+const CALLERS = ['Leonard', 'Tommaso', 'John', 'Henry']
 
 function dayOfYear() {
   const now = new Date()

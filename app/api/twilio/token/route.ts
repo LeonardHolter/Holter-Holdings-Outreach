@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/server'
 const { AccessToken } = twilio.jwt
 const { VoiceGrant } = AccessToken
 
-const CALLERS  = ['Leonard', 'Tommaso', 'John', 'Sunzim', 'Henry']
+const CALLERS  = ['Leonard', 'Tommaso', 'John', 'Henry']
 const DAILY_CAP = 80
 
 /** Day-of-year (1–365) drives the rotation offset so it shifts automatically each day. */

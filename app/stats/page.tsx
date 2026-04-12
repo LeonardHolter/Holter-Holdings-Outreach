@@ -61,9 +61,7 @@ export default async function StatsPage() {
     leonard: 'bg-blue-500',
     tommaso: 'bg-violet-500',
     john: 'bg-emerald-500',
-    sunzim: 'bg-amber-500',
-    daniel: 'bg-rose-500',
-    ellison: 'bg-cyan-500',
+    henry: 'bg-amber-500',
   }
 
   return (

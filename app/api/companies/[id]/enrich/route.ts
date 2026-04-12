@@ -115,7 +115,7 @@ ${webIntel || 'No additional web intel available.'}
 
 Your ONLY job is to count unique technician/employee first names mentioned in the reviews and web research above. Then estimate revenue from that count.
 
-1. Go through every review and extract every unique person name mentioned (e.g. "Mike was great", "Our tech Josh arrived on time", "Shout out to Daniel and Chris"). These are technicians.
+1. Go through every review and extract every unique person name mentioned (e.g. "Mike was great", "Our tech Josh arrived on time", "Shout out to Sam and Chris"). These are technicians.
 2. Deduplicate — "Mike" mentioned in 3 different reviews is still 1 technician.
 3. List every unique technician name you found.
 4. A typical garage door technician generates $150,000–$250,000 in revenue per year.

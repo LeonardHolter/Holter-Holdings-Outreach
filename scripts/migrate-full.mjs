@@ -111,9 +111,9 @@ for (let i = 1; i < lines.length; i++) {
   // 13: calls_leonard
   // 14: calls_tommaso
   // 15: calls_john
-  // 16: calls_sunzim
-  // 17: calls_daniel
-  // 18: calls_ellison
+  // 16: (removed — was calls_sunzim)
+  // 17: (removed — was calls_daniel)
+  // 18: (removed — was calls_ellison)
 
   const emailRaw = cols[10] || ''
   const notesRaw = cols[11] || ''
@@ -162,9 +162,6 @@ for (let i = 1; i < lines.length; i++) {
     calls_leonard: parseNum(cols[13]) ?? 0,
     calls_tommaso: parseNum(cols[14]) ?? 0,
     calls_john: parseNum(cols[15]) ?? 0,
-    calls_sunzim: parseNum(cols[16]) ?? 0,
-    calls_daniel: parseNum(cols[17]) ?? 0,
-    calls_ellison: parseNum(cols[18]) ?? 0,
   })
 }
 

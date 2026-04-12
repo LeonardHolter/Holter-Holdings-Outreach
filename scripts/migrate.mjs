@@ -159,9 +159,9 @@ for (let i = 1; i < lines.length; i++) {
   // 14: Calls made by Leonard
   // 15: Calls made by Tommaso
   // 16: Calls made by John
-  // 17: Calls made by Sunzim
-  // 18: Calls made by Daniel
-  // 19: Calls made by Ellison
+  // 17: (removed — was Sunzim)
+  // 18: (removed — was Daniel)
+  // 19: (removed — was Ellison)
 
   const companyName = cols[0]?.replace(/\|.*$/, '').trim() // strip "| CEO name" suffix
   if (!companyName) {
@@ -188,9 +188,6 @@ for (let i = 1; i < lines.length; i++) {
     calls_leonard: parseNum(cols[14]) ?? 0,
     calls_tommaso: parseNum(cols[15]) ?? 0,
     calls_john: parseNum(cols[16]) ?? 0,
-    calls_sunzim: parseNum(cols[17]) ?? 0,
-    calls_daniel: parseNum(cols[18]) ?? 0,
-    calls_ellison: parseNum(cols[19]) ?? 0,
   }
 
   rows.push(row)

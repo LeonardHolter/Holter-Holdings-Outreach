@@ -43,9 +43,7 @@ const CALLER_COLORS: Record<string, string> = {
   leonard: 'bg-blue-900/60 border-blue-700/50 text-blue-300',
   tommaso: 'bg-violet-900/60 border-violet-700/50 text-violet-300',
   john:    'bg-emerald-900/60 border-emerald-700/50 text-emerald-300',
-  sunzim:  'bg-amber-900/60 border-amber-700/50 text-amber-300',
-  daniel:  'bg-rose-900/60 border-rose-700/50 text-rose-300',
-  ellison: 'bg-cyan-900/60 border-cyan-700/50 text-cyan-300',
+  henry:   'bg-amber-900/60 border-amber-700/50 text-amber-300',
 }
 
 function callerColor(name: string): string {
