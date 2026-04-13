@@ -184,6 +184,14 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
   const [dialpadInput, setDialpadInput] = useState('')
   const [incomingCall, setIncomingCall] = useState<IncomingCallState>(null)
 
+  // Auto-dialer
+  const [autoDialer, setAutoDialer] = useState(false)
+  const autoDialerRef = useRef(false)
+  const [autoDialCountdown, setAutoDialCountdown] = useState(0)
+  const autoDialCountdownRef = useRef<ReturnType<typeof setTimeout>[]>([])
+  const pendingAutoDialRef = useRef(false)
+
+  useEffect(() => { autoDialerRef.current = autoDialer }, [autoDialer])
 
   const company = queue[index]
 
@@ -487,6 +495,84 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
     setDialpadInput(prev => prev + digit)
   }
 
+  // ── Auto-dialer logic ────────────────────────────────────────
+  function cancelAutoDialCountdown() {
+    autoDialCountdownRef.current.forEach(clearTimeout)
+    autoDialCountdownRef.current = []
+    setAutoDialCountdown(0)
+    pendingAutoDialRef.current = false
+  }
+
+  async function autoAdvanceAndDial() {
+    if (!company) return
+    setSaving(true)
+    try {
+      const autoResponse = response || 'Did not pick up'
+      const newCallCount = (company.amount_of_calls ?? 0) + 1
+      const payload: Partial<Company> = {
+        company_name: companyName || company.company_name,
+        notes: notes || null,
+        owners_name: ownersName || null,
+        phone_number: phoneNumber || null,
+        email: emailField || null,
+        callback_day: callbackDay || null,
+        callback_time: callbackTime || null,
+        state: state || null,
+        last_call_sid: callSid || company.last_call_sid,
+        reach_out_response: autoResponse,
+        who_called: sessionCaller || null,
+        last_reach_out: todayStr(),
+        amount_of_calls: newCallCount,
+        next_reach_out: nextRescheduleDate(company.google_reviews, newCallCount),
+      }
+      const updated = await patchCompany(company.id, payload)
+      setQueue(q => q.map(c => c.id === updated.id ? updated : c))
+      if (notes.trim() && notes.trim() !== originalNotes.trim()) {
+        fetch(`/api/companies/${company.id}/notes`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ note: notes.trim(), caller_name: sessionCaller || null }),
+        }).catch(() => {})
+      }
+      toast.success('Auto-saved — dialing next…')
+    } catch {
+      toast.error('Failed to save — stopping auto-dialer')
+      setAutoDialer(false)
+      setSaving(false)
+      return
+    }
+    setSaving(false)
+    const next = findNextUnclaimed(index + 1, queue, claimedByOthers)
+    if (next === -1) { setDone(true); return }
+    setIndex(next)
+    loadCompany(queue[next])
+    pendingAutoDialRef.current = true
+  }
+
+  // When call ends + auto-dialer on → start countdown
+  useEffect(() => {
+    if (callStatus !== 'ended' || !autoDialerRef.current) return
+    const timers: ReturnType<typeof setTimeout>[] = []
+    setAutoDialCountdown(3)
+    timers.push(setTimeout(() => setAutoDialCountdown(2), 1000))
+    timers.push(setTimeout(() => setAutoDialCountdown(1), 2000))
+    timers.push(setTimeout(() => { setAutoDialCountdown(0); autoAdvanceAndDial() }, 3000))
+    autoDialCountdownRef.current = timers
+    return () => timers.forEach(clearTimeout)
+  }, [callStatus]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // When new company loads + pending auto-dial → dial
+  useEffect(() => {
+    if (!pendingAutoDialRef.current || callStatus !== 'idle' || !deviceReady) return
+    const phone = queue[index]?.phone_number
+    if (!phone) { pendingAutoDialRef.current = false; return }
+    const timer = setTimeout(() => {
+      pendingAutoDialRef.current = false
+      handleCall()
+    }, 1200)
+    return () => clearTimeout(timer)
+  }, [index, callStatus, deviceReady]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Navigation ───────────────────────────────────────────────
   function findNextUnclaimed(from: number, q: Company[], claimed: Map<string, string>): number {
     let i = from
@@ -667,6 +753,26 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
               <span className="text-sm text-gray-500">{index + 1} / {queue.length}</span>
             </div>
 
+            {/* Auto-dialer toggle */}
+            <button
+              onClick={() => { setAutoDialer(a => !a); cancelAutoDialCountdown() }}
+              className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl border text-sm font-medium transition-all touch-manipulation ${
+                autoDialer
+                  ? 'bg-red-950/40 border-red-800/60 text-red-300'
+                  : 'bg-gray-900 border-gray-800 text-gray-400 hover:border-gray-600 hover:text-gray-300'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                Auto-dialer {autoDialer ? 'ON' : 'OFF'}
+              </div>
+              <div className={`w-9 h-5 rounded-full transition-colors relative ${autoDialer ? 'bg-red-600' : 'bg-gray-700'}`}>
+                <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${autoDialer ? 'translate-x-4' : 'translate-x-0.5'}`} />
+              </div>
+            </button>
+
             {/* Number health panel */}
             {allUsage.length > 0 && (
               <div className="bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 space-y-2">
@@ -775,8 +881,19 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
                       Call
                     </button>
                   )}
-                  {callStatus === 'ended' && (
+                  {callStatus === 'ended' && !autoDialCountdown && (
                     <span className="text-xs text-gray-500 font-medium">Ended {fmtDuration(duration)}</span>
+                  )}
+                  {callStatus === 'ended' && autoDialCountdown > 0 && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-bold text-red-400 tabular-nums">
+                        Next call in {autoDialCountdown}s
+                      </span>
+                      <button onClick={() => { cancelAutoDialCountdown(); setAutoDialer(false) }}
+                        className="px-2 py-1 rounded-lg bg-gray-800 border border-gray-700 text-xs text-gray-300 hover:text-white transition-colors">
+                        Stop
+                      </button>
+                    </div>
                   )}
                 </div>
               ) : (
