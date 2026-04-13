@@ -6,6 +6,7 @@ import { format } from 'date-fns'
 import type { Company, CompanyNote } from '@/types'
 import { RESPONSE_STATUSES, TEAM_MEMBERS, STATES } from '@/types'
 import { createClient } from '@/lib/supabase/client'
+import EmailComposeModal from './EmailComposeModal'
 
 interface Props {
   initialQueue: Company[]
@@ -150,6 +151,7 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
   const [phoneNumber, setPhoneNumber] = useState('')
   const [emailField, setEmailField]   = useState('')
   const [showEmailInput, setShowEmailInput] = useState(false)
+  const [showEmailModal, setShowEmailModal] = useState(false)
   const [callbackDay, setCallbackDay]   = useState('')
   const [callbackTime, setCallbackTime] = useState('')
   const [showCallback, setShowCallback] = useState(false)
@@ -943,6 +945,17 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
                     className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
                     autoFocus
                   />
+                  {emailField && (
+                    <button
+                      onClick={() => setShowEmailModal(true)}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium transition-colors touch-manipulation shrink-0"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                      </svg>
+                      Send
+                    </button>
+                  )}
                   {!emailField && (
                     <button
                       onClick={() => setShowEmailInput(false)}
@@ -1068,6 +1081,14 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
           ) : null
         })()}
       </div>
+
+      {showEmailModal && company && (
+        <EmailComposeModal
+          company={{ ...company, email: emailField || company.email }}
+          onClose={() => setShowEmailModal(false)}
+          onSent={() => setShowEmailModal(false)}
+        />
+      )}
     </div>
   )
 }
