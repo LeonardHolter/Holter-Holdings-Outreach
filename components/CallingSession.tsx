@@ -154,6 +154,7 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
   const [showEmailModal, setShowEmailModal] = useState(false)
   const [callbackDay, setCallbackDay]   = useState('')
   const [callbackTime, setCallbackTime] = useState('')
+  const [callbackDate, setCallbackDate] = useState('')
   const [showCallback, setShowCallback] = useState(false)
   const [state, setState]             = useState('')
   const [companyName, setCompanyName] = useState('')
@@ -205,7 +206,8 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
     setShowEmailInput(!!c.email)
     setCallbackDay(c.callback_day ?? '')
     setCallbackTime(c.callback_time ?? '')
-    setShowCallback(!!(c.callback_day || c.callback_time))
+    setCallbackDate(c.next_reach_out ?? '')
+    setShowCallback(!!(c.callback_day || c.callback_time || c.next_reach_out))
     setState(c.state ?? '')
     setCompanyName(c.company_name ?? '')
     setCallStatus('idle')
@@ -523,7 +525,7 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
         who_called: sessionCaller || null,
         last_reach_out: todayStr(),
         amount_of_calls: newCallCount,
-        next_reach_out: nextRescheduleDate(company.google_reviews, newCallCount),
+        next_reach_out: callbackDate || nextRescheduleDate(company.google_reviews, newCallCount),
       }
       const updated = await patchCompany(company.id, payload)
       setQueue(q => q.map(c => c.id === updated.id ? updated : c))
@@ -600,7 +602,7 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
         payload.who_called = sessionCaller || null
         payload.last_reach_out = todayStr()
         const newCallCount = (company.amount_of_calls ?? 0) + 1
-        payload.next_reach_out = nextRescheduleDate(company.google_reviews, newCallCount)
+        payload.next_reach_out = callbackDate || nextRescheduleDate(company.google_reviews, newCallCount)
         payload.amount_of_calls = newCallCount
       }
       const updated = await patchCompany(company.id, payload)
@@ -1099,38 +1101,48 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
                 <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                Best callback time — tap to set
+                Set callback date/time — tap to set
               </button>
             ) : (
-              <Field label="Best Callback Time">
-                <div className="flex gap-2 flex-wrap">
-                  <select
-                    value={callbackDay}
-                    onChange={e => setCallbackDay(e.target.value)}
-                    className="flex-1 min-w-[120px] bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-yellow-500"
-                  >
-                    <option value="">Any day</option>
-                    {['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].map(d => (
-                      <option key={d} value={d}>{d}</option>
-                    ))}
-                  </select>
+              <div className="space-y-3">
+                <Field label="Callback Date">
                   <input
-                    type="time"
-                    value={callbackTime}
-                    onChange={e => setCallbackTime(e.target.value)}
-                    className="flex-1 min-w-[120px] bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-yellow-500"
+                    type="date"
+                    value={callbackDate}
+                    onChange={e => setCallbackDate(e.target.value)}
+                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-yellow-500 [color-scheme:dark]"
                   />
-                  <button
-                    onClick={() => { setCallbackDay(''); setCallbackTime(''); setShowCallback(false) }}
-                    className="px-2 text-gray-600 hover:text-gray-400 transition-colors"
-                    title="Clear"
-                  >
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-              </Field>
+                </Field>
+                <Field label="Preferred Day & Time">
+                  <div className="flex gap-2 flex-wrap">
+                    <select
+                      value={callbackDay}
+                      onChange={e => setCallbackDay(e.target.value)}
+                      className="flex-1 min-w-[120px] bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-yellow-500"
+                    >
+                      <option value="">Any day</option>
+                      {['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].map(d => (
+                        <option key={d} value={d}>{d}</option>
+                      ))}
+                    </select>
+                    <input
+                      type="time"
+                      value={callbackTime}
+                      onChange={e => setCallbackTime(e.target.value)}
+                      className="flex-1 min-w-[120px] bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-yellow-500 [color-scheme:dark]"
+                    />
+                    <button
+                      onClick={() => { setCallbackDay(''); setCallbackTime(''); setCallbackDate(''); setShowCallback(false) }}
+                      className="px-2 text-gray-600 hover:text-gray-400 transition-colors"
+                      title="Clear all"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                </Field>
+              </div>
             )}
           </div>
 
