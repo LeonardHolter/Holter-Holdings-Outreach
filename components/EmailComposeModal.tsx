@@ -11,12 +11,23 @@ interface Props {
   onSent: () => void
 }
 
+function buildDefaultBody(company: Company): string {
+  const ownerFirst = company.owners_name?.split(/\s+/)[0] || 'there'
+  const companyName = company.company_name || 'your company'
+  return `Hi ${ownerFirst},
+
+My name is Leonard, I'm the owner of a small family office in NY that is looking to buy an overhead door company just like ${companyName}. Have you ever considered selling? If so, please shoot me an email back!
+
+Best,
+Leonard`
+}
+
 export default function EmailComposeModal({ company, onClose, onSent }: Props) {
   const defaultDate = company.next_reach_out || format(new Date(), 'yyyy-MM-dd')
 
   const [to, setTo] = useState(company.email || '')
   const [subject, setSubject] = useState(`Follow-up: ${company.company_name}`)
-  const [body, setBody] = useState('')
+  const [body, setBody] = useState(() => buildDefaultBody(company))
   const [date, setDate] = useState(defaultDate)
   const [time, setTime] = useState('09:00')
   const [sending, setSending] = useState(false)
