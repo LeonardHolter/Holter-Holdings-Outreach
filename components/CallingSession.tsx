@@ -122,6 +122,14 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
     return sortQueueByCallback(initialQueue)
   })
   const [index, setIndex]             = useState(0)
+
+  // Refs that always hold the latest values — avoids stale closures in
+  // setTimeout / useEffect callbacks (e.g. auto-dialer countdown).
+  const queueRef = useRef(queue)
+  const indexRef = useRef(index)
+  const calledIdsRef = useRef<Set<string>>(new Set())
+  useEffect(() => { queueRef.current = queue }, [queue])
+  useEffect(() => { indexRef.current = index }, [index])
   const [saving, setSaving]           = useState(false)
   const [done, setDone]               = useState(false)
   const [sessionCaller, setSessionCallerState] = useState('')
@@ -506,13 +514,16 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
   }
 
   async function autoAdvanceAndDial() {
-    if (!company) return
+    const curQueue = queueRef.current
+    const curIndex = indexRef.current
+    const curCompany = curQueue[curIndex]
+    if (!curCompany) return
     setSaving(true)
     try {
       const autoResponse = response || 'Did not pick up'
-      const newCallCount = (company.amount_of_calls ?? 0) + 1
+      const newCallCount = (curCompany.amount_of_calls ?? 0) + 1
       const payload: Partial<Company> = {
-        company_name: companyName || company.company_name,
+        company_name: companyName || curCompany.company_name,
         notes: notes || null,
         owners_name: ownersName || null,
         phone_number: phoneNumber || null,
@@ -520,16 +531,16 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
         callback_day: callbackDay || null,
         callback_time: callbackTime || null,
         state: state || null,
-        last_call_sid: callSid || company.last_call_sid,
+        last_call_sid: callSid || curCompany.last_call_sid,
         reach_out_response: autoResponse,
         who_called: sessionCaller || null,
         last_reach_out: todayStr(),
         amount_of_calls: newCallCount,
-        next_reach_out: callbackDate || nextRescheduleDate(company.google_reviews, newCallCount),
+        next_reach_out: callbackDate || nextRescheduleDate(curCompany.google_reviews, newCallCount),
       }
-      await patchCompany(company.id, payload)
+      await patchCompany(curCompany.id, payload)
       if (notes.trim() && notes.trim() !== originalNotes.trim()) {
-        fetch(`/api/companies/${company.id}/notes`, {
+        fetch(`/api/companies/${curCompany.id}/notes`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ note: notes.trim(), caller_name: sessionCaller || null }),
@@ -543,9 +554,10 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
       return
     }
     setSaving(false)
-    const filtered = queue.filter(c => c.id !== company.id)
+    calledIdsRef.current.add(curCompany.id)
+    const filtered = curQueue.filter(c => !calledIdsRef.current.has(c.id))
     setQueue(filtered)
-    const next = findNextUnclaimed(index, filtered, claimedByOthers)
+    const next = findNextUnclaimed(0, filtered, claimedByOthers)
     if (next === -1) { setDone(true); return }
     setIndex(next)
     loadCompany(filtered[next])
@@ -567,7 +579,7 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
   // When new company loads + pending auto-dial → dial
   useEffect(() => {
     if (!pendingAutoDialRef.current || callStatus !== 'idle' || !deviceReady) return
-    const phone = queue[index]?.phone_number
+    const phone = queueRef.current[indexRef.current]?.phone_number
     if (!phone) { pendingAutoDialRef.current = false; return }
     const timer = setTimeout(() => {
       pendingAutoDialRef.current = false
@@ -617,12 +629,11 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
         }).catch(() => {})
       }
 
-      // Remove the company from the local queue after logging a call
-      // so it doesn't reappear during this session.
       if (!skip) {
-        const filtered = queue.filter(c => c.id !== updated.id)
+        calledIdsRef.current.add(updated.id)
+        const filtered = queue.filter(c => !calledIdsRef.current.has(c.id))
         setQueue(filtered)
-        const next = findNextUnclaimed(index, filtered, claimedByOthers)
+        const next = findNextUnclaimed(0, filtered, claimedByOthers)
         if (next === -1) { toast.success('Saved'); setSaving(false); setDone(true); return }
         toast.success('Saved')
         setSaving(false)
@@ -645,7 +656,10 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
 
   function handleBack() {
     if (index === 0) return
-    const p = index - 1; setIndex(p); loadCompany(queue[p])
+    let p = index - 1
+    while (p >= 0 && calledIdsRef.current.has(queue[p].id)) p--
+    if (p < 0) return
+    setIndex(p); loadCompany(queue[p])
   }
 
   // ── Done ─────────────────────────────────────────────────────
