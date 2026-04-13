@@ -527,8 +527,7 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
         amount_of_calls: newCallCount,
         next_reach_out: callbackDate || nextRescheduleDate(company.google_reviews, newCallCount),
       }
-      const updated = await patchCompany(company.id, payload)
-      setQueue(q => q.map(c => c.id === updated.id ? updated : c))
+      await patchCompany(company.id, payload)
       if (notes.trim() && notes.trim() !== originalNotes.trim()) {
         fetch(`/api/companies/${company.id}/notes`, {
           method: 'POST',
@@ -544,10 +543,12 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
       return
     }
     setSaving(false)
-    const next = findNextUnclaimed(index + 1, queue, claimedByOthers)
+    const filtered = queue.filter(c => c.id !== company.id)
+    setQueue(filtered)
+    const next = findNextUnclaimed(index, filtered, claimedByOthers)
     if (next === -1) { setDone(true); return }
     setIndex(next)
-    loadCompany(queue[next])
+    loadCompany(filtered[next])
     pendingAutoDialRef.current = true
   }
 
@@ -606,7 +607,6 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
         payload.amount_of_calls = newCallCount
       }
       const updated = await patchCompany(company.id, payload)
-      setQueue(q => q.map(c => c.id === updated.id ? updated : c))
 
       // Log note to history if it changed
       if (!skip && notes.trim() && notes.trim() !== originalNotes.trim()) {
@@ -617,7 +617,22 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
         }).catch(() => {})
       }
 
-      toast.success(skip ? 'Skipped' : 'Saved')
+      // Remove the company from the local queue after logging a call
+      // so it doesn't reappear during this session.
+      if (!skip) {
+        const filtered = queue.filter(c => c.id !== updated.id)
+        setQueue(filtered)
+        const next = findNextUnclaimed(index, filtered, claimedByOthers)
+        if (next === -1) { toast.success('Saved'); setSaving(false); setDone(true); return }
+        toast.success('Saved')
+        setSaving(false)
+        setIndex(next)
+        loadCompany(filtered[next])
+        return
+      }
+
+      setQueue(q => q.map(c => c.id === updated.id ? updated : c))
+      toast.success('Skipped')
     } catch {
       toast.error('Failed to save')
     } finally {
