@@ -1,0 +1,232 @@
+'use client'
+
+import { useState, useMemo } from 'react'
+import { toast } from 'sonner'
+import type { Company } from '@/types'
+
+interface Props {
+  initialCompanies: Company[]
+}
+
+const TWO_WEEKS_MS = 14 * 24 * 60 * 60 * 1000
+
+function isEmailedRecently(emailedAt: string | null): boolean {
+  if (!emailedAt) return false
+  return Date.now() - new Date(emailedAt).getTime() < TWO_WEEKS_MS
+}
+
+async function patchCompany(id: string, payload: Partial<Company>) {
+  const res = await fetch(`/api/companies/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  if (!res.ok) throw new Error('Failed to save')
+  return res.json() as Promise<Company>
+}
+
+export function EmailChecklist({ initialCompanies }: Props) {
+  const [companies, setCompanies] = useState<Company[]>(initialCompanies)
+  const [toggling, setToggling] = useState<Set<string>>(new Set())
+  const [search, setSearch] = useState('')
+  const [showChecked, setShowChecked] = useState(true)
+
+  const emailedCount = useMemo(
+    () => companies.filter(c => isEmailedRecently(c.emailed_at)).length,
+    [companies]
+  )
+
+  const filtered = useMemo(() => {
+    let list = companies
+    if (!showChecked) list = list.filter(c => !isEmailedRecently(c.emailed_at))
+    if (search.trim()) {
+      const q = search.trim().toLowerCase()
+      list = list.filter(c =>
+        c.company_name.toLowerCase().includes(q) ||
+        (c.email ?? '').toLowerCase().includes(q) ||
+        (c.state ?? '').toLowerCase().includes(q)
+      )
+    }
+    // Unchecked first, then checked; within each group alphabetical
+    return [...list].sort((a, b) => {
+      const ac = isEmailedRecently(a.emailed_at) ? 1 : 0
+      const bc = isEmailedRecently(b.emailed_at) ? 1 : 0
+      if (ac !== bc) return ac - bc
+      return a.company_name.localeCompare(b.company_name)
+    })
+  }, [companies, search, showChecked])
+
+  async function handleToggle(company: Company) {
+    const wasEmailed = isEmailedRecently(company.emailed_at)
+    const newEmailedAt = wasEmailed ? null : new Date().toISOString()
+
+    setToggling(s => new Set(s).add(company.id))
+    setCompanies(prev =>
+      prev.map(c => c.id === company.id ? { ...c, emailed_at: newEmailedAt } : c)
+    )
+
+    try {
+      const updated = await patchCompany(company.id, { emailed_at: newEmailedAt })
+      setCompanies(prev => prev.map(c => c.id === company.id ? updated : c))
+    } catch {
+      // Revert optimistic update
+      setCompanies(prev => prev.map(c => c.id === company.id ? company : c))
+      toast.error('Failed to save')
+    } finally {
+      setToggling(s => { const n = new Set(s); n.delete(company.id); return n })
+    }
+  }
+
+  const resetDate = useMemo(() => {
+    // Find the oldest emailed_at among checked items — that's when the next reset fires
+    const emailedDates = companies
+      .map(c => c.emailed_at)
+      .filter(Boolean)
+      .map(d => new Date(d!).getTime())
+    if (emailedDates.length === 0) return null
+    const oldest = Math.min(...emailedDates)
+    return new Date(oldest + TWO_WEEKS_MS)
+  }, [companies])
+
+  return (
+    <div className="flex-1 overflow-y-auto px-4 py-6">
+      <div className="max-w-2xl mx-auto space-y-5">
+
+        {/* Header */}
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-xl font-bold text-white">Email List</h1>
+            <p className="text-sm text-gray-500 mt-0.5">
+              {emailedCount} / {companies.length} emailed
+              {resetDate && (
+                <span className="ml-2 text-gray-600">
+                  · resets {resetDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                </span>
+              )}
+            </p>
+          </div>
+          {/* Progress ring */}
+          <div className="shrink-0 relative w-12 h-12">
+            <svg className="w-12 h-12 -rotate-90" viewBox="0 0 36 36">
+              <circle cx="18" cy="18" r="15.9" fill="none" stroke="#1f2937" strokeWidth="3" />
+              <circle
+                cx="18" cy="18" r="15.9" fill="none"
+                stroke="#3b82f6" strokeWidth="3"
+                strokeDasharray={`${companies.length > 0 ? (emailedCount / companies.length) * 100 : 0} 100`}
+                strokeLinecap="round"
+              />
+            </svg>
+            <span className="absolute inset-0 flex items-center justify-center text-xs font-semibold text-white">
+              {companies.length > 0 ? Math.round((emailedCount / companies.length) * 100) : 0}%
+            </span>
+          </div>
+        </div>
+
+        {/* Search + filter */}
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search company or email…"
+              className="w-full bg-gray-900 border border-gray-800 rounded-xl pl-9 pr-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-500"
+            />
+          </div>
+          <button
+            onClick={() => setShowChecked(s => !s)}
+            className={`flex items-center gap-1.5 px-3 py-2.5 rounded-xl border text-sm font-medium transition-colors shrink-0 ${
+              showChecked
+                ? 'border-gray-700 bg-gray-900 text-gray-400 hover:border-gray-600'
+                : 'border-blue-700 bg-blue-950/40 text-blue-300'
+            }`}
+          >
+            {showChecked ? 'Hide done' : 'Show done'}
+          </button>
+        </div>
+
+        {/* 2-week reset banner */}
+        <div className="flex items-center gap-2 px-3 py-2 bg-gray-900 border border-gray-800 rounded-lg">
+          <svg className="w-3.5 h-3.5 text-gray-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+          <p className="text-xs text-gray-500">
+            Checkboxes auto-reset 2 weeks after being checked — no manual action needed.
+          </p>
+        </div>
+
+        {/* List */}
+        {filtered.length === 0 ? (
+          <div className="text-center py-16 text-gray-600">
+            <svg className="w-8 h-8 mx-auto mb-3 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+            </svg>
+            <p className="text-sm">{search ? 'No matches' : 'All emailed — great work!'}</p>
+          </div>
+        ) : (
+          <div className="space-y-1.5">
+            {filtered.map(company => {
+              const checked = isEmailedRecently(company.emailed_at)
+              const loading = toggling.has(company.id)
+              return (
+                <button
+                  key={company.id}
+                  onClick={() => handleToggle(company)}
+                  disabled={loading}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border text-left transition-all ${
+                    checked
+                      ? 'bg-gray-900/40 border-gray-800 opacity-60'
+                      : 'bg-gray-900 border-gray-800 hover:border-gray-600'
+                  }`}
+                >
+                  {/* Checkbox */}
+                  <div className={`shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                    loading
+                      ? 'border-gray-600 bg-transparent'
+                      : checked
+                        ? 'border-blue-500 bg-blue-500'
+                        : 'border-gray-600 bg-transparent'
+                  }`}>
+                    {loading ? (
+                      <svg className="w-3 h-3 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                      </svg>
+                    ) : checked ? (
+                      <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                      </svg>
+                    ) : null}
+                  </div>
+
+                  {/* Company info */}
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm font-medium truncate ${checked ? 'line-through text-gray-500' : 'text-white'}`}>
+                      {company.company_name}
+                    </p>
+                    <p className="text-xs text-gray-500 truncate mt-0.5">{company.email}</p>
+                  </div>
+
+                  {/* State + emailed date */}
+                  <div className="shrink-0 text-right">
+                    {company.state && (
+                      <p className="text-xs text-gray-600">{company.state}</p>
+                    )}
+                    {checked && company.emailed_at && (
+                      <p className="text-xs text-blue-500 mt-0.5">
+                        {new Date(company.emailed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      </p>
+                    )}
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}

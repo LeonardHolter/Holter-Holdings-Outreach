@@ -43,6 +43,7 @@ export interface Company {
   enrichment_reasoning: string | null
   enrichment_signals: string[] | null
   enriched_at: string | null
+  emailed_at: string | null
   created_at: string
   updated_at: string
 }
