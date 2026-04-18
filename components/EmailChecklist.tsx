@@ -1,11 +1,12 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import { toast } from 'sonner'
 import type { Company } from '@/types'
+import type { CompanyWithRecording } from '@/app/emails/page'
 
 interface Props {
-  initialCompanies: Company[]
+  initialCompanies: CompanyWithRecording[]
 }
 
 const TWO_WEEKS_MS = 14 * 24 * 60 * 60 * 1000
@@ -25,11 +26,90 @@ async function patchCompany(id: string, payload: Partial<Company>) {
   return res.json() as Promise<Company>
 }
 
+function streamUrl(raw: string) {
+  return `/api/twilio/recordings/stream?url=${encodeURIComponent(raw)}`
+}
+
+// ── Inline audio player ───────────────────────────────────────
+
+function AudioRow({ url }: { url: string }) {
+  const audioRef = useRef<HTMLAudioElement>(null)
+  const [playing, setPlaying] = useState(false)
+  const [progress, setProgress] = useState(0)
+  const [duration, setDuration] = useState(0)
+
+  function fmt(s: number) {
+    const m = Math.floor(s / 60)
+    const sec = Math.floor(s % 60)
+    return `${m}:${sec.toString().padStart(2, '0')}`
+  }
+
+  function togglePlay() {
+    const a = audioRef.current
+    if (!a) return
+    if (playing) { a.pause() } else { a.play() }
+  }
+
+  function handleScrub(e: React.ChangeEvent<HTMLInputElement>) {
+    const a = audioRef.current
+    if (!a || !duration) return
+    const t = (Number(e.target.value) / 100) * duration
+    a.currentTime = t
+    setProgress(Number(e.target.value))
+  }
+
+  return (
+    <div className="mt-2 flex items-center gap-2 px-1" onClick={e => e.stopPropagation()}>
+      <audio
+        ref={audioRef}
+        src={url}
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
+        onEnded={() => { setPlaying(false); setProgress(0) }}
+        onLoadedMetadata={() => setDuration(audioRef.current?.duration ?? 0)}
+        onTimeUpdate={() => {
+          const a = audioRef.current
+          if (a && a.duration) setProgress((a.currentTime / a.duration) * 100)
+        }}
+      />
+      <button
+        onClick={togglePlay}
+        className="shrink-0 w-7 h-7 rounded-full bg-indigo-600 hover:bg-indigo-500 flex items-center justify-center transition-colors"
+      >
+        {playing ? (
+          <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 24 24">
+            <rect x="6" y="4" width="4" height="16" rx="1" />
+            <rect x="14" y="4" width="4" height="16" rx="1" />
+          </svg>
+        ) : (
+          <svg className="w-3 h-3 text-white ml-0.5" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M8 5v14l11-7z" />
+          </svg>
+        )}
+      </button>
+      <input
+        type="range"
+        min={0} max={100} step={0.1}
+        value={progress}
+        onChange={handleScrub}
+        className="flex-1 h-1 accent-indigo-500 cursor-pointer"
+      />
+      <span className="shrink-0 text-xs text-gray-500 tabular-nums w-10 text-right">
+        {duration > 0 ? fmt((progress / 100) * duration) : '—'}
+      </span>
+    </div>
+  )
+}
+
+// ── Main component ────────────────────────────────────────────
+
 export function EmailChecklist({ initialCompanies }: Props) {
-  const [companies, setCompanies] = useState<Company[]>(initialCompanies)
+  const [companies, setCompanies] = useState<CompanyWithRecording[]>(initialCompanies)
   const [toggling, setToggling] = useState<Set<string>>(new Set())
   const [search, setSearch] = useState('')
   const [showChecked, setShowChecked] = useState(true)
+  const [expandedAudio, setExpandedAudio] = useState<Set<string>>(new Set())
+  const [copiedId, setCopiedId] = useState<string | null>(null)
 
   const emailedCount = useMemo(
     () => companies.filter(c => isEmailedRecently(c.emailed_at)).length,
@@ -47,7 +127,6 @@ export function EmailChecklist({ initialCompanies }: Props) {
         (c.state ?? '').toLowerCase().includes(q)
       )
     }
-    // Unchecked first, then checked; within each group alphabetical
     return [...list].sort((a, b) => {
       const ac = isEmailedRecently(a.emailed_at) ? 1 : 0
       const bc = isEmailedRecently(b.emailed_at) ? 1 : 0
@@ -56,7 +135,7 @@ export function EmailChecklist({ initialCompanies }: Props) {
     })
   }, [companies, search, showChecked])
 
-  async function handleToggle(company: Company) {
+  async function handleToggle(company: CompanyWithRecording) {
     const wasEmailed = isEmailedRecently(company.emailed_at)
     const newEmailedAt = wasEmailed ? null : new Date().toISOString()
 
@@ -67,9 +146,8 @@ export function EmailChecklist({ initialCompanies }: Props) {
 
     try {
       const updated = await patchCompany(company.id, { emailed_at: newEmailedAt })
-      setCompanies(prev => prev.map(c => c.id === company.id ? updated : c))
+      setCompanies(prev => prev.map(c => c.id === company.id ? { ...c, ...updated } : c))
     } catch {
-      // Revert optimistic update
       setCompanies(prev => prev.map(c => c.id === company.id ? company : c))
       toast.error('Failed to save')
     } finally {
@@ -77,8 +155,29 @@ export function EmailChecklist({ initialCompanies }: Props) {
     }
   }
 
+  async function handleCopyEmail(e: React.MouseEvent, company: CompanyWithRecording) {
+    e.stopPropagation()
+    if (!company.email) return
+    try {
+      await navigator.clipboard.writeText(company.email)
+      setCopiedId(company.id)
+      setTimeout(() => setCopiedId(null), 2000)
+    } catch {
+      toast.error('Could not copy — try manually')
+    }
+  }
+
+  function handleToggleAudio(e: React.MouseEvent, id: string) {
+    e.stopPropagation()
+    setExpandedAudio(s => {
+      const n = new Set(s)
+      if (n.has(id)) n.delete(id)
+      else n.add(id)
+      return n
+    })
+  }
+
   const resetDate = useMemo(() => {
-    // Find the oldest emailed_at among checked items — that's when the next reset fires
     const emailedDates = companies
       .map(c => c.emailed_at)
       .filter(Boolean)
@@ -105,7 +204,6 @@ export function EmailChecklist({ initialCompanies }: Props) {
               )}
             </p>
           </div>
-          {/* Progress ring */}
           <div className="shrink-0 relative w-12 h-12">
             <svg className="w-12 h-12 -rotate-90" viewBox="0 0 36 36">
               <circle cx="18" cy="18" r="15.9" fill="none" stroke="#1f2937" strokeWidth="3" />
@@ -148,7 +246,7 @@ export function EmailChecklist({ initialCompanies }: Props) {
           </button>
         </div>
 
-        {/* 2-week reset banner */}
+        {/* 2-week reset notice */}
         <div className="flex items-center gap-2 px-3 py-2 bg-gray-900 border border-gray-800 rounded-lg">
           <svg className="w-3.5 h-3.5 text-gray-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -171,57 +269,119 @@ export function EmailChecklist({ initialCompanies }: Props) {
             {filtered.map(company => {
               const checked = isEmailedRecently(company.emailed_at)
               const loading = toggling.has(company.id)
+              const audioOpen = expandedAudio.has(company.id)
+              const copied = copiedId === company.id
+              const recUrl = company.latestRecordingUrl ? streamUrl(company.latestRecordingUrl) : null
+
               return (
-                <button
+                <div
                   key={company.id}
-                  onClick={() => handleToggle(company)}
-                  disabled={loading}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border text-left transition-all ${
+                  className={`rounded-xl border transition-all ${
                     checked
                       ? 'bg-gray-900/40 border-gray-800 opacity-60'
-                      : 'bg-gray-900 border-gray-800 hover:border-gray-600'
+                      : 'bg-gray-900 border-gray-800 hover:border-gray-700'
                   }`}
                 >
-                  {/* Checkbox */}
-                  <div className={`shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
-                    loading
-                      ? 'border-gray-600 bg-transparent'
-                      : checked
-                        ? 'border-blue-500 bg-blue-500'
-                        : 'border-gray-600 bg-transparent'
-                  }`}>
-                    {loading ? (
-                      <svg className="w-3 h-3 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-                      </svg>
-                    ) : checked ? (
-                      <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                      </svg>
-                    ) : null}
-                  </div>
+                  <div className="flex items-center gap-3 px-4 py-3">
 
-                  {/* Company info */}
-                  <div className="flex-1 min-w-0">
-                    <p className={`text-sm font-medium truncate ${checked ? 'line-through text-gray-500' : 'text-white'}`}>
-                      {company.company_name}
-                    </p>
-                    <p className="text-xs text-gray-500 truncate mt-0.5">{company.email}</p>
-                  </div>
+                    {/* Checkbox */}
+                    <button
+                      onClick={() => handleToggle(company)}
+                      disabled={loading}
+                      className="shrink-0 touch-manipulation"
+                      aria-label={checked ? 'Unmark as emailed' : 'Mark as emailed'}
+                    >
+                      <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                        loading
+                          ? 'border-gray-600 bg-transparent'
+                          : checked
+                            ? 'border-blue-500 bg-blue-500'
+                            : 'border-gray-600 bg-transparent hover:border-gray-400'
+                      }`}>
+                        {loading ? (
+                          <svg className="w-3 h-3 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                          </svg>
+                        ) : checked ? (
+                          <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                          </svg>
+                        ) : null}
+                      </div>
+                    </button>
 
-                  {/* State + emailed date */}
-                  <div className="shrink-0 text-right">
-                    {company.state && (
-                      <p className="text-xs text-gray-600">{company.state}</p>
-                    )}
-                    {checked && company.emailed_at && (
-                      <p className="text-xs text-blue-500 mt-0.5">
-                        {new Date(company.emailed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                    {/* Company info */}
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-sm font-medium truncate ${checked ? 'line-through text-gray-500' : 'text-white'}`}>
+                        {company.company_name}
                       </p>
-                    )}
+                      <p className="text-xs text-gray-500 truncate mt-0.5">{company.email}</p>
+                    </div>
+
+                    {/* Action buttons */}
+                    <div className="shrink-0 flex items-center gap-1.5">
+
+                      {/* Copy email */}
+                      <button
+                        onClick={e => handleCopyEmail(e, company)}
+                        title="Copy email address"
+                        className={`p-1.5 rounded-lg transition-colors touch-manipulation ${
+                          copied
+                            ? 'text-green-400 bg-green-950/40'
+                            : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800'
+                        }`}
+                      >
+                        {copied ? (
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                        ) : (
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                          </svg>
+                        )}
+                      </button>
+
+                      {/* Play recording */}
+                      {recUrl && (
+                        <button
+                          onClick={e => handleToggleAudio(e, company.id)}
+                          title={audioOpen ? 'Hide recording' : 'Play recording'}
+                          className={`p-1.5 rounded-lg transition-colors touch-manipulation ${
+                            audioOpen
+                              ? 'text-indigo-400 bg-indigo-950/40'
+                              : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800'
+                          }`}
+                        >
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                        </button>
+                      )}
+
+                      {/* State + date */}
+                      <div className="text-right ml-1">
+                        {company.state && (
+                          <p className="text-xs text-gray-600">{company.state}</p>
+                        )}
+                        {checked && company.emailed_at && (
+                          <p className="text-xs text-blue-500 mt-0.5">
+                            {new Date(company.emailed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                          </p>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                </button>
+
+                  {/* Inline audio player */}
+                  {audioOpen && recUrl && (
+                    <div className="px-4 pb-3 border-t border-gray-800/60 pt-2">
+                      <AudioRow url={recUrl} />
+                    </div>
+                  )}
+                </div>
               )
             })}
           </div>
