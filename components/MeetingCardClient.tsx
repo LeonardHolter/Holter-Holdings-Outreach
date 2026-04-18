@@ -63,6 +63,9 @@ export default function MeetingCardClient({ company: initial }: { company: Compa
   const noteInputRef = useRef<HTMLTextAreaElement>(null)
   const [analyzing, setAnalyzing] = useState(false)
 
+  // Reason for not being high priority
+  const [reason, setReason] = useState(initial.priority_reason ?? '')
+
   const loadNotes = useCallback(async () => {
     setLoadingNotes(true)
     try {
@@ -113,10 +116,17 @@ export default function MeetingCardClient({ company: initial }: { company: Compa
     }
   }
 
-  async function setPriority(priority: 'high' | 'low' | null) {
+  async function setPriority(priority: 'high' | null) {
     await patch({ meeting_priority: priority })
-    if (priority) toast.success(`Set to ${priority} priority`)
-    else toast.success('Priority cleared')
+    if (priority === 'high') toast.success('Set to high priority')
+    else toast.success('Moved to other')
+  }
+
+  async function saveReason(value: string) {
+    const trimmed = value.trim()
+    if (trimmed === (c.priority_reason ?? '')) return
+    await patch({ priority_reason: trimmed || null })
+    setReason(trimmed)
   }
 
   async function handleReceivedNda() {
@@ -239,10 +249,13 @@ export default function MeetingCardClient({ company: initial }: { company: Compa
           </div>
           <div className="flex items-center gap-2 mt-0.5">
             {c.state && <span className="text-xs text-gray-500 font-medium uppercase tracking-wider">{c.state}</span>}
-            {c.meeting_priority && (
-              <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
-                c.meeting_priority === 'high' ? 'bg-red-900/60 text-red-300' : 'bg-blue-900/60 text-blue-300'
-              }`}>{c.meeting_priority}</span>
+            {c.meeting_priority === 'high' && (
+              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-red-900/60 text-red-300">high</span>
+            )}
+            {c.meeting_priority !== 'high' && (
+              <span className="text-xs text-gray-600 italic truncate max-w-[160px]">
+                {c.priority_reason ? c.priority_reason : 'No reason set'}
+              </span>
             )}
           </div>
         </div>
@@ -309,36 +322,40 @@ export default function MeetingCardClient({ company: initial }: { company: Compa
           {/* Details grid */}
           <div className="grid grid-cols-2 gap-x-4 gap-y-3">
             <Detail label="Priority">
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setPriority(c.meeting_priority === 'high' ? null : 'high')}
-                  disabled={saving}
-                  className={`px-2.5 py-1 rounded-lg border text-xs font-medium transition-colors ${
-                    c.meeting_priority === 'high'
-                      ? 'bg-red-900/60 border-red-700 text-red-300'
-                      : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-red-300 hover:border-red-700/60'
-                  }`}
-                >
-                  High
-                </button>
-                <button
-                  onClick={() => setPriority(c.meeting_priority === 'low' ? null : 'low')}
-                  disabled={saving}
-                  className={`px-2.5 py-1 rounded-lg border text-xs font-medium transition-colors ${
-                    c.meeting_priority === 'low'
-                      ? 'bg-blue-900/60 border-blue-700 text-blue-300'
-                      : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-blue-300 hover:border-blue-700/60'
-                  }`}
-                >
-                  Low
-                </button>
-                <button
-                  onClick={handleReceivedNda}
-                  disabled={saving}
-                  className="px-2.5 py-1 rounded-lg border text-xs font-medium transition-colors bg-gray-800 border-gray-700 text-gray-400 hover:text-emerald-300 hover:border-emerald-700/60"
-                >
-                  Received NDA
-                </button>
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setPriority(c.meeting_priority === 'high' ? null : 'high')}
+                    disabled={saving}
+                    className={`px-2.5 py-1 rounded-lg border text-xs font-medium transition-colors ${
+                      c.meeting_priority === 'high'
+                        ? 'bg-red-900/60 border-red-700 text-red-300'
+                        : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-red-300 hover:border-red-700/60'
+                    }`}
+                  >
+                    {c.meeting_priority === 'high' ? '★ High priority' : 'Set high priority'}
+                  </button>
+                  <button
+                    onClick={handleReceivedNda}
+                    disabled={saving}
+                    className="px-2.5 py-1 rounded-lg border text-xs font-medium transition-colors bg-gray-800 border-gray-700 text-gray-400 hover:text-emerald-300 hover:border-emerald-700/60"
+                  >
+                    Received NDA
+                  </button>
+                </div>
+                {c.meeting_priority !== 'high' && (
+                  <div>
+                    <p className="text-[10px] text-gray-600 uppercase tracking-wide font-medium mb-1">Reason not high priority</p>
+                    <textarea
+                      value={reason}
+                      onChange={e => setReason(e.target.value)}
+                      onBlur={e => saveReason(e.target.value)}
+                      rows={2}
+                      placeholder="e.g. Waiting for owner to get back, too small, needs follow-up first…"
+                      className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 resize-none focus:outline-none focus:border-gray-500"
+                    />
+                  </div>
+                )}
               </div>
             </Detail>
 

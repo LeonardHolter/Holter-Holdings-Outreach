@@ -44,6 +44,7 @@ export interface Company {
   enrichment_signals: string[] | null
   enriched_at: string | null
   emailed_at: string | null
+  priority_reason: string | null
   created_at: string
   updated_at: string
 }
