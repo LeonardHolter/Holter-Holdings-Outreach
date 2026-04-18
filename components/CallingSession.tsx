@@ -6,7 +6,6 @@ import { format } from 'date-fns'
 import type { Company, CompanyNote } from '@/types'
 import { RESPONSE_STATUSES, TEAM_MEMBERS, STATES } from '@/types'
 import { createClient } from '@/lib/supabase/client'
-import EmailComposeModal from './EmailComposeModal'
 
 interface Props {
   initialQueue: Company[]
@@ -158,8 +157,6 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
   const [ownersName, setOwnersName]   = useState('')
   const [phoneNumber, setPhoneNumber] = useState('')
   const [emailField, setEmailField]   = useState('')
-  const [showEmailInput, setShowEmailInput] = useState(false)
-  const [showEmailModal, setShowEmailModal] = useState(false)
   const [callbackDay, setCallbackDay]   = useState('')
   const [callbackTime, setCallbackTime] = useState('')
   const [callbackDate, setCallbackDate] = useState('')
@@ -211,7 +208,6 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
     setOwnersName(c.owners_name ?? '')
     setPhoneNumber(c.phone_number ?? '')
     setEmailField(c.email ?? '')
-    setShowEmailInput(!!c.email)
     setCallbackDay(c.callback_day ?? '')
     setCallbackTime(c.callback_time ?? '')
     setCallbackDate(c.next_reach_out ?? '')
@@ -1070,56 +1066,6 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
             )}
           </div>
 
-          {/* Email */}
-          <div className="px-4 sm:px-6 pb-4 sm:pb-5">
-            {!showEmailInput ? (
-              <button
-                onClick={() => setShowEmailInput(true)}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed border-gray-600 text-sm text-gray-400 hover:border-blue-500 hover:text-blue-400 transition-colors touch-manipulation w-full"
-              >
-                <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                </svg>
-                Email provided — tap to enter
-              </button>
-            ) : (
-              <Field label="Email">
-                <div className="flex gap-2">
-                  <input
-                    type="email"
-                    value={emailField}
-                    onChange={e => setEmailField(e.target.value)}
-                    placeholder="owner@example.com"
-                    className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
-                    autoFocus
-                  />
-                  {emailField && (
-                    <button
-                      onClick={() => setShowEmailModal(true)}
-                      className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium transition-colors touch-manipulation shrink-0"
-                    >
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                      </svg>
-                      Send
-                    </button>
-                  )}
-                  {!emailField && (
-                    <button
-                      onClick={() => setShowEmailInput(false)}
-                      className="px-2 text-gray-600 hover:text-gray-400 transition-colors"
-                      title="Cancel"
-                    >
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
-                  )}
-                </div>
-              </Field>
-            )}
-          </div>
-
           {/* Callback time */}
           <div className="px-4 sm:px-6 pb-4 sm:pb-5">
             {!showCallback ? (
@@ -1240,13 +1186,6 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
         })()}
       </div>
 
-      {showEmailModal && company && (
-        <EmailComposeModal
-          company={{ ...company, email: emailField || company.email }}
-          onClose={() => setShowEmailModal(false)}
-          onSent={() => setShowEmailModal(false)}
-        />
-      )}
     </div>
   )
 }
