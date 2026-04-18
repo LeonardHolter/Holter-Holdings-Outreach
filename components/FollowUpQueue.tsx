@@ -44,6 +44,36 @@ function formatRevenue(n: number | null): string {
   return `$${n}`
 }
 
+function EmailCopyButton({ email }: { email: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <div className="flex items-center gap-1.5 min-w-0">
+      <span className="text-sm text-gray-300 truncate">{email}</span>
+      <button
+        onClick={async () => {
+          await navigator.clipboard.writeText(email)
+          setCopied(true)
+          setTimeout(() => setCopied(false), 2000)
+        }}
+        className={`shrink-0 flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-colors ${
+          copied ? 'text-green-400 bg-green-950/40' : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800'
+        }`}
+        title="Copy email"
+      >
+        {copied ? (
+          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+          </svg>
+        ) : (
+          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+          </svg>
+        )}
+      </button>
+    </div>
+  )
+}
+
 function QueueSection({
   queue,
   upcoming,
@@ -264,6 +294,12 @@ function QueueSection({
                   Call
                 </button>
               </div>
+            ) : <span className="text-sm text-gray-600">—</span>}
+          </div>
+          <div>
+            <p className="text-xs text-gray-600 uppercase tracking-wide font-medium mb-0.5">Email</p>
+            {current.email ? (
+              <EmailCopyButton email={current.email} />
             ) : <span className="text-sm text-gray-600">—</span>}
           </div>
           <div>
