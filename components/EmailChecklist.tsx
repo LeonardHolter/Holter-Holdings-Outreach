@@ -2,8 +2,7 @@
 
 import { useState, useMemo, useRef } from 'react'
 import { toast } from 'sonner'
-import type { Company } from '@/types'
-import type { CompanyWithRecording } from '@/app/emails/page'
+import type { Company, CompanyWithRecording } from '@/types'
 
 interface Props {
   initialCompanies: CompanyWithRecording[]
@@ -188,8 +187,7 @@ export function EmailChecklist({ initialCompanies }: Props) {
   }, [companies])
 
   return (
-    <div className="flex-1 overflow-y-auto px-4 py-6">
-      <div className="max-w-2xl mx-auto space-y-5">
+    <div className="space-y-5">
 
         {/* Header */}
         <div className="flex items-start justify-between gap-4">
@@ -386,7 +384,6 @@ export function EmailChecklist({ initialCompanies }: Props) {
             })}
           </div>
         )}
-      </div>
     </div>
   )
 }

@@ -49,6 +49,10 @@ export interface Company {
   updated_at: string
 }
 
+export interface CompanyWithRecording extends Company {
+  latestRecordingUrl: string | null
+}
+
 export interface CompanyNote {
   id: string
   company_id: string

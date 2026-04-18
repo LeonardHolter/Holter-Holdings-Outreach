@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
-const CALLERS = ['Leonard', 'Tommaso', 'John'] as const
+const CALLERS = ['Leonard', 'Tommaso', 'John', 'Henry'] as const
 
 interface CallerStats {
   name: string
@@ -107,7 +107,7 @@ export default function StartPage() {
         {/* Caller picker */}
         <div className="space-y-3">
           <p className="text-sm text-gray-400 font-medium text-center">Who are you?</p>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-4 gap-2">
             {CALLERS.map(name => (
               <button
                 key={name}

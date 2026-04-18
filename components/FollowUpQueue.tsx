@@ -4,8 +4,9 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { format, parseISO, differenceInCalendarDays } from 'date-fns'
 import { toast } from 'sonner'
-import type { Company } from '@/types'
+import type { Company, CompanyWithRecording } from '@/types'
 import EmailComposeModal from './EmailComposeModal'
+import { EmailChecklist } from './EmailChecklist'
 
 // ── Smart cadence ────────────────────────────────────────────────────────────
 
@@ -485,12 +486,14 @@ export default function FollowUpQueue({
   highDue,
   lowDue,
   upcoming,
+  emailCompanies,
 }: {
   highDue: Company[]
   lowDue: Company[]
   upcoming: Company[]
+  emailCompanies: CompanyWithRecording[]
 }) {
-  const [tab, setTab] = useState<'high' | 'low'>('high')
+  const [tab, setTab] = useState<'high' | 'low' | 'emails'>('high')
 
   return (
     <div className="px-4 py-6 max-w-2xl mx-auto space-y-4">
@@ -520,13 +523,27 @@ export default function FollowUpQueue({
             {lowDue.length}
           </span>
         </button>
+        <button
+          onClick={() => setTab('emails')}
+          className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+            tab === 'emails' ? 'bg-indigo-900/60 text-indigo-300' : 'text-gray-400 hover:text-white hover:bg-gray-800'
+          }`}
+        >
+          <span className="w-2 h-2 rounded-full bg-indigo-500" />
+          Emails
+          <span className={`text-xs px-1.5 py-0.5 rounded-full ${tab === 'emails' ? 'bg-indigo-800/60 text-indigo-300' : 'bg-gray-800 text-gray-500'}`}>
+            {emailCompanies.length}
+          </span>
+        </button>
       </div>
 
       {/* Active queue */}
       {tab === 'high' ? (
         <QueueSection key="high" queue={highDue} upcoming={upcoming.filter(c => c.meeting_priority === 'high')} label="High Priority" />
-      ) : (
+      ) : tab === 'low' ? (
         <QueueSection key="low" queue={lowDue} upcoming={upcoming.filter(c => c.meeting_priority !== 'high')} label="Other" />
+      ) : (
+        <EmailChecklist initialCompanies={emailCompanies} />
       )}
     </div>
   )

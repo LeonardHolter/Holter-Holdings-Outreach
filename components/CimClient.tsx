@@ -23,8 +23,14 @@ async function patchCompany(id: string, payload: Partial<Company>): Promise<Comp
   return res.json()
 }
 
-export function CimClient({ companies }: { companies: Company[] }) {
+export function CimClient({ companies: initial }: { companies: Company[] }) {
+  const [companies, setCompanies] = useState<Company[]>(initial)
   const [expanded, setExpanded] = useState<string | null>(null)
+
+  function handleRemove(id: string) {
+    setCompanies(prev => prev.filter(c => c.id !== id))
+    if (expanded === id) setExpanded(null)
+  }
 
   return (
     <div className="space-y-3">
@@ -34,8 +40,14 @@ export function CimClient({ companies }: { companies: Company[] }) {
           company={c}
           expanded={expanded === c.id}
           onToggle={() => setExpanded(expanded === c.id ? null : c.id)}
+          onRemove={() => handleRemove(c.id)}
         />
       ))}
+      {companies.length === 0 && (
+        <div className="text-center py-16 text-gray-600">
+          <p className="text-sm">No companies on the CIM page.</p>
+        </div>
+      )}
     </div>
   )
 }
@@ -44,10 +56,12 @@ function CompanyCard({
   company: c,
   expanded,
   onToggle,
+  onRemove,
 }: {
   company: Company
   expanded: boolean
   onToggle: () => void
+  onRemove: () => void
 }) {
   const [docs, setDocs] = useState<CimDocument[]>([])
   const [loading, setLoading] = useState(false)
@@ -205,6 +219,25 @@ function CompanyCard({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               {loiSent ? 'LOI Sent' : 'Mark LOI Sent'}
+            </button>
+
+            <button
+              onClick={async () => {
+                if (!confirm(`Remove "${c.company_name}" from CIM? This will move it back to Intro-meeting wanted.`)) return
+                try {
+                  await patchCompany(c.id, { reach_out_response: 'Intro-meeting wanted' })
+                  toast.success('Removed from CIM')
+                  onRemove()
+                } catch {
+                  toast.error('Failed to remove')
+                }
+              }}
+              className="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-700 bg-gray-800 text-gray-500 hover:text-red-400 hover:border-red-800/60 transition-colors"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+              Remove from CIM
             </button>
           </div>
 
