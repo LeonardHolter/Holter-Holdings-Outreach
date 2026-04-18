@@ -6,6 +6,37 @@ import { toast } from 'sonner'
 import type { Company } from '@/types'
 import RecordingsPlayer from './RecordingsPlayer'
 
+// ── Revenue helpers ────────────────────────────────────────────
+
+function parseRevenue(s: string): number | null {
+  const clean = s.trim().toUpperCase()
+  if (!clean) return null
+  if (clean.endsWith('M')) {
+    const n = parseFloat(clean.slice(0, -1))
+    return isNaN(n) ? null : Math.round(n * 1_000_000)
+  }
+  if (clean.endsWith('K')) {
+    const n = parseFloat(clean.slice(0, -1))
+    return isNaN(n) ? null : Math.round(n * 1_000)
+  }
+  const n = parseFloat(clean.replace(/[^0-9.]/g, ''))
+  return isNaN(n) ? null : Math.round(n)
+}
+
+function fmtRevShort(n: number | null | undefined): string {
+  if (!n) return ''
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`
+  return String(n)
+}
+
+function fmtRevDisplay(n: number | null): string {
+  if (!n) return '?'
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000) return `$${(n / 1_000).toFixed(0)}K`
+  return `$${n}`
+}
+
 function formatDate(d: string | null) {
   if (!d) return null
   try { return format(parseISO(d), 'MMM d, yyyy') } catch { return d }
@@ -61,6 +92,33 @@ export default function MeetingCardClient({ company: initial }: { company: Compa
   const [newNote, setNewNote] = useState('')
   const [submittingNote, setSubmittingNote] = useState(false)
   const noteInputRef = useRef<HTMLTextAreaElement>(null)
+  const [revLow, setRevLow]         = useState(fmtRevShort(initial.estimated_revenue_low))
+  const [revHigh, setRevHigh]       = useState(fmtRevShort(initial.estimated_revenue_high))
+  const [revConf, setRevConf]       = useState(initial.revenue_confidence ?? '')
+  const [revTechs, setRevTechs]     = useState(String(initial.technician_count_estimate ?? ''))
+  const [revEditing, setRevEditing] = useState(false)
+  const [revSaving, setRevSaving]   = useState(false)
+
+  async function saveRevenue() {
+    setRevEditing(false)
+    const parsedLow  = parseRevenue(revLow)
+    const parsedHigh = parseRevenue(revHigh)
+    const parsedTechs = revTechs ? parseInt(revTechs, 10) : null
+    const conf = revConf || null
+    setRevSaving(true)
+    try {
+      await patch({
+        estimated_revenue_low:  parsedLow,
+        estimated_revenue_high: parsedHigh,
+        revenue_confidence:     conf,
+        technician_count_estimate: isNaN(parsedTechs ?? NaN) ? null : parsedTechs,
+      })
+      toast.success('Revenue saved')
+    } finally {
+      setRevSaving(false)
+    }
+  }
+
   const [analyzing, setAnalyzing] = useState(false)
 
   // Reason for not being high priority
@@ -222,13 +280,6 @@ export default function MeetingCardClient({ company: initial }: { company: Compa
     }
   }
 
-  function formatRevenue(n: number | null) {
-    if (!n) return '?'
-    if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`
-    if (n >= 1_000) return `$${(n / 1_000).toFixed(0)}K`
-    return `$${n}`
-  }
-
   return (
     <div className={`border rounded-2xl transition-all overflow-hidden ${
       overdue ? 'bg-gray-900 border-red-900/60'
@@ -241,9 +292,9 @@ export default function MeetingCardClient({ company: initial }: { company: Compa
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <h2 className="text-sm font-semibold truncate text-white">{c.company_name}</h2>
-            {c.enriched_at && (
+            {(c.estimated_revenue_low || c.estimated_revenue_high) && (
               <span className="shrink-0 text-xs font-medium text-indigo-300 bg-indigo-900/40 px-1.5 py-0.5 rounded">
-                {formatRevenue(c.estimated_revenue_low)}–{formatRevenue(c.estimated_revenue_high)}
+                {fmtRevDisplay(c.estimated_revenue_low)}–{fmtRevDisplay(c.estimated_revenue_high)}
               </span>
             )}
           </div>
@@ -285,34 +336,6 @@ export default function MeetingCardClient({ company: initial }: { company: Compa
               }`}
             >
               {copied ? 'Copied!' : 'Copy'}
-            </button>
-            <button
-              onClick={handleAnalyze}
-              disabled={analyzing}
-              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-medium transition-all disabled:opacity-40 ${
-                analyzing
-                  ? 'bg-indigo-900/50 border-indigo-700 text-indigo-300'
-                  : c.enriched_at
-                    ? 'bg-indigo-900/40 border-indigo-800/50 text-indigo-300 hover:bg-indigo-900/60'
-                    : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-indigo-300 hover:border-indigo-700/60'
-              }`}
-            >
-              {analyzing ? (
-                <>
-                  <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-                  </svg>
-                  Analyzing...
-                </>
-              ) : (
-                <>
-                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                  </svg>
-                  {c.enriched_at ? 'Re-analyze' : 'Analyze'}
-                </>
-              )}
             </button>
             <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-950/60 border border-green-800/50 rounded-full text-xs text-green-400 font-medium">
               Intro wanted
@@ -402,38 +425,128 @@ export default function MeetingCardClient({ company: initial }: { company: Compa
             </div>
           )}
 
-          {/* Enrichment results */}
-          {c.enriched_at && (
-            <div className="bg-indigo-950/30 border border-indigo-800/40 rounded-xl px-4 py-3 space-y-2">
-              <div className="flex items-center justify-between">
-                <p className="text-xs text-indigo-400 font-medium uppercase tracking-wide">Revenue Estimate</p>
-                {c.revenue_confidence && (
+          {/* Revenue */}
+          <div className="bg-indigo-950/30 border border-indigo-800/40 rounded-xl px-4 py-3 space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-indigo-400 font-medium uppercase tracking-wide">Revenue Estimate</p>
+              <div className="flex items-center gap-2">
+                {c.revenue_confidence && !revEditing && (
                   <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
                     c.revenue_confidence === 'high' ? 'bg-green-900/60 text-green-400'
                     : c.revenue_confidence === 'medium' ? 'bg-yellow-900/60 text-yellow-400'
                     : 'bg-gray-800 text-gray-400'
                   }`}>{c.revenue_confidence} confidence</span>
                 )}
+                <button
+                  onClick={handleAnalyze}
+                  disabled={analyzing}
+                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium transition-all disabled:opacity-40 ${
+                    analyzing ? 'bg-indigo-900/50 border border-indigo-700 text-indigo-300'
+                    : 'bg-gray-800 border border-gray-700 text-gray-400 hover:text-indigo-300 hover:border-indigo-700/60'
+                  }`}
+                >
+                  {analyzing ? (
+                    <><svg className="w-2.5 h-2.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Analyzing…</>
+                  ) : (
+                    <><svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>AI analyze</>
+                  )}
+                </button>
+                {!revEditing && (
+                  <button
+                    onClick={() => setRevEditing(true)}
+                    className="px-2 py-0.5 rounded text-[10px] font-medium bg-gray-800 border border-gray-700 text-gray-400 hover:text-white hover:border-gray-500 transition-colors"
+                  >
+                    Edit
+                  </button>
+                )}
               </div>
-              <p className="text-lg font-bold text-white">
-                {formatRevenue(c.estimated_revenue_low)}
-                {' – '}
-                {formatRevenue(c.estimated_revenue_high)}
-                <span className="text-sm font-normal text-gray-500"> / year</span>
-              </p>
-              {c.technician_count_estimate != null && (
-                <p className="text-sm text-gray-400">~{c.technician_count_estimate} technicians estimated</p>
-              )}
-              <p className="text-xs text-gray-500 leading-relaxed">{c.enrichment_reasoning}</p>
-              {c.enrichment_signals?.length ? (
-                <div className="flex flex-wrap gap-1.5 pt-1">
-                  {c.enrichment_signals.map((s, i) => (
-                    <span key={i} className="text-[10px] px-2 py-0.5 rounded-full bg-gray-800 border border-gray-700 text-gray-400">{s}</span>
-                  ))}
-                </div>
-              ) : null}
             </div>
-          )}
+
+            {revEditing ? (
+              <div className="space-y-2">
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <p className="text-[10px] text-gray-500 mb-1">Low (e.g. 1.2M, 500K)</p>
+                    <input
+                      autoFocus
+                      value={revLow}
+                      onChange={e => setRevLow(e.target.value)}
+                      placeholder="e.g. 1.2M"
+                      className="w-full bg-gray-800 border border-blue-500 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none placeholder-gray-600"
+                    />
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-gray-500 mb-1">High</p>
+                    <input
+                      value={revHigh}
+                      onChange={e => setRevHigh(e.target.value)}
+                      placeholder="e.g. 3M"
+                      className="w-full bg-gray-800 border border-blue-500 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none placeholder-gray-600"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <p className="text-[10px] text-gray-500 mb-1">Confidence</p>
+                    <select
+                      value={revConf}
+                      onChange={e => setRevConf(e.target.value)}
+                      className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none"
+                    >
+                      <option value="">—</option>
+                      <option value="high">High</option>
+                      <option value="medium">Medium</option>
+                      <option value="low">Low</option>
+                    </select>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-gray-500 mb-1">Technicians (est.)</p>
+                    <input
+                      type="number"
+                      value={revTechs}
+                      onChange={e => setRevTechs(e.target.value)}
+                      placeholder="—"
+                      className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none"
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <button onClick={() => setRevEditing(false)} className="px-3 py-1.5 text-xs text-gray-400 hover:text-white transition-colors">Cancel</button>
+                  <button
+                    onClick={saveRevenue}
+                    disabled={revSaving}
+                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-40"
+                  >
+                    {revSaving ? 'Saving…' : 'Save'}
+                  </button>
+                </div>
+              </div>
+            ) : (c.estimated_revenue_low || c.estimated_revenue_high) ? (
+              <div className="space-y-1">
+                <p className="text-lg font-bold text-white">
+                  {fmtRevDisplay(c.estimated_revenue_low)}
+                  {' – '}
+                  {fmtRevDisplay(c.estimated_revenue_high)}
+                  <span className="text-sm font-normal text-gray-500"> / year</span>
+                </p>
+                {c.technician_count_estimate != null && (
+                  <p className="text-sm text-gray-400">~{c.technician_count_estimate} technicians estimated</p>
+                )}
+                {c.enrichment_reasoning && (
+                  <p className="text-xs text-gray-500 leading-relaxed">{c.enrichment_reasoning}</p>
+                )}
+                {c.enrichment_signals?.length ? (
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {c.enrichment_signals.map((s, i) => (
+                      <span key={i} className="text-[10px] px-2 py-0.5 rounded-full bg-gray-800 border border-gray-700 text-gray-400">{s}</span>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-600 italic">No revenue estimate yet — click Edit or AI analyze.</p>
+            )}
+          </div>
 
           {/* Follow-ups */}
           <div className="pt-2 border-t border-gray-800 space-y-2">

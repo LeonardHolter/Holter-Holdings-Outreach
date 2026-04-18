@@ -18,6 +18,124 @@ import { getRowHighlight } from './ResponseBadge'
 
 const col = createColumnHelper<Company>()
 
+// ── Revenue helpers ────────────────────────────────────────────
+
+function parseRevenue(s: string): number | null {
+  const clean = s.trim().toUpperCase()
+  if (!clean) return null
+  if (clean.endsWith('M')) {
+    const n = parseFloat(clean.slice(0, -1))
+    return isNaN(n) ? null : Math.round(n * 1_000_000)
+  }
+  if (clean.endsWith('K')) {
+    const n = parseFloat(clean.slice(0, -1))
+    return isNaN(n) ? null : Math.round(n * 1_000)
+  }
+  const n = parseFloat(clean.replace(/[^0-9.]/g, ''))
+  return isNaN(n) ? null : Math.round(n)
+}
+
+function fmtRevShort(n: number | null | undefined): string {
+  if (!n) return ''
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`
+  return String(n)
+}
+
+function fmtRevDisplay(n: number | null): string {
+  if (!n) return '?'
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000) return `$${(n / 1_000).toFixed(0)}K`
+  return `$${n}`
+}
+
+type RevenueFields = Pick<Company, 'estimated_revenue_low' | 'estimated_revenue_high' | 'revenue_confidence'>
+
+function RevenueCell({ company: c, onSave }: { company: Company; onSave: (f: RevenueFields) => Promise<void> }) {
+  const [editing, setEditing] = useState(false)
+  const [low, setLow] = useState('')
+  const [high, setHigh] = useState('')
+  const [confidence, setConfidence] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  function openEdit() {
+    setLow(fmtRevShort(c.estimated_revenue_low))
+    setHigh(fmtRevShort(c.estimated_revenue_high))
+    setConfidence(c.revenue_confidence ?? '')
+    setEditing(true)
+  }
+
+  async function commit() {
+    setEditing(false)
+    const parsedLow = parseRevenue(low)
+    const parsedHigh = parseRevenue(high)
+    const conf = confidence || null
+    if (parsedLow === c.estimated_revenue_low && parsedHigh === c.estimated_revenue_high && conf === c.revenue_confidence) return
+    setSaving(true)
+    try {
+      await onSave({ estimated_revenue_low: parsedLow, estimated_revenue_high: parsedHigh, revenue_confidence: conf })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (editing) {
+    return (
+      <div className="space-y-1 p-1" onClick={e => e.stopPropagation()}>
+        <div className="flex gap-1">
+          <input autoFocus value={low} onChange={e => setLow(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false) }}
+            placeholder="Low e.g. 1.2M"
+            className="w-0 flex-1 bg-gray-800 border border-blue-500 rounded px-1.5 py-1 text-xs text-white focus:outline-none placeholder-gray-600"
+          />
+          <input value={high} onChange={e => setHigh(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false) }}
+            placeholder="High"
+            className="w-0 flex-1 bg-gray-800 border border-blue-500 rounded px-1.5 py-1 text-xs text-white focus:outline-none placeholder-gray-600"
+          />
+        </div>
+        <div className="flex gap-1">
+          <select value={confidence} onChange={e => setConfidence(e.target.value)}
+            className="flex-1 bg-gray-800 border border-gray-600 rounded px-1 py-1 text-xs text-white focus:outline-none">
+            <option value="">confidence…</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+          </select>
+          <button onClick={commit} className="px-2 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-medium">✓</button>
+        </div>
+      </div>
+    )
+  }
+
+  const hasData = c.estimated_revenue_low || c.estimated_revenue_high
+  return (
+    <div
+      onClick={openEdit}
+      className={`min-h-[28px] px-2 py-1 rounded cursor-pointer hover:bg-white/5 transition-colors text-xs leading-tight ${saving ? 'opacity-50' : ''}`}
+    >
+      {saving ? (
+        <span className="text-gray-500 text-xs">saving…</span>
+      ) : hasData ? (
+        <>
+          <span className="text-white font-medium">{fmtRevDisplay(c.estimated_revenue_low)}–{fmtRevDisplay(c.estimated_revenue_high)}</span>
+          <span className="text-gray-500">/yr</span>
+          {c.revenue_confidence && (
+            <span className={`ml-1 ${c.revenue_confidence === 'high' ? 'text-green-400' : c.revenue_confidence === 'medium' ? 'text-yellow-400' : 'text-gray-500'}`}>
+              ({c.revenue_confidence})
+            </span>
+          )}
+          {c.technician_count_estimate != null && (
+            <p className="text-gray-500">~{c.technician_count_estimate} techs</p>
+          )}
+        </>
+      ) : (
+        <span className="text-gray-600 hover:text-gray-400 transition-colors">+ add revenue</span>
+      )}
+    </div>
+  )
+}
+
 interface Props {
   initialData: Company[]
 }
@@ -210,31 +328,24 @@ export function CompanyTable({ initialData }: Props) {
     col.display({
       id: 'revenue',
       header: 'Revenue Est.',
-      size: 140,
-      cell: ({ row }) => {
-        const c = row.original
-        if (!c.enriched_at) return <span className="text-gray-600 text-xs">—</span>
-        const fmt = (n: number | null) => {
-          if (!n) return '?'
-          if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`
-          if (n >= 1_000) return `$${(n / 1_000).toFixed(0)}K`
-          return `$${n}`
-        }
-        return (
-          <div className="text-xs leading-tight">
-            <span className="text-white font-medium">{fmt(c.estimated_revenue_low)}–{fmt(c.estimated_revenue_high)}</span>
-            <span className="text-gray-500">/yr</span>
-            {c.revenue_confidence && (
-              <span className={`ml-1 ${c.revenue_confidence === 'high' ? 'text-green-400' : c.revenue_confidence === 'medium' ? 'text-yellow-400' : 'text-gray-500'}`}>
-                ({c.revenue_confidence})
-              </span>
-            )}
-            {c.technician_count_estimate != null && (
-              <p className="text-gray-500">~{c.technician_count_estimate} techs</p>
-            )}
-          </div>
-        )
-      },
+      size: 170,
+      cell: ({ row }) => (
+        <RevenueCell
+          company={row.original}
+          onSave={async (fields) => {
+            const prev = row.original
+            setData(d => d.map(c => c.id === prev.id ? { ...c, ...fields } : c))
+            try {
+              const updated = await patchCompany(prev.id, fields)
+              setData(d => d.map(c => c.id === prev.id ? updated : c))
+              toast.success('Saved')
+            } catch {
+              setData(d => d.map(c => c.id === prev.id ? prev : c))
+              toast.error('Failed to save')
+            }
+          }}
+        />
+      ),
     }),
     col.display({
       id: 'actions',
