@@ -2,8 +2,6 @@
 
 import { Nav } from '@/components/Nav'
 import Link from 'next/link'
-import { useState } from 'react'
-import { toast } from 'sonner'
 
 const MAIN_ITEMS = [
   {
@@ -107,24 +105,6 @@ function ItemList({ items }: { items: typeof MAIN_ITEMS }) {
 }
 
 export default function SettingsPage() {
-  const [deduping, setDeduping] = useState(false)
-
-  async function handleDeduplicate() {
-    if (!confirm('This will permanently delete all duplicate companies (by phone number), keeping the one with the most calls. Continue?')) return
-    setDeduping(true)
-    try {
-      const res = await fetch('/api/deduplicate', { method: 'POST' })
-      if (!res.ok) throw new Error('Failed')
-      const { deleted } = await res.json()
-      if (deleted === 0) toast.info('No duplicates found')
-      else toast.success(`Removed ${deleted} duplicate${deleted === 1 ? '' : 's'}`)
-    } catch {
-      toast.error('Failed to remove duplicates')
-    } finally {
-      setDeduping(false)
-    }
-  }
-
   return (
     <div className="flex flex-col h-[100dvh] overflow-hidden bg-gray-950">
       <Nav />
@@ -144,24 +124,6 @@ export default function SettingsPage() {
             <div>
               <p className="text-xs text-gray-600 uppercase tracking-wider font-medium mb-2 px-1">Tools</p>
               <ItemList items={TOOL_ITEMS} />
-            </div>
-            <div>
-              <p className="text-xs text-gray-600 uppercase tracking-wider font-medium mb-2 px-1">Actions</p>
-              <button
-                onClick={handleDeduplicate}
-                disabled={deduping}
-                className="flex items-center gap-4 p-4 w-full bg-gray-900 border border-gray-800 rounded-2xl hover:border-red-900/60 hover:bg-gray-900/80 transition-all group text-left"
-              >
-                <div className="w-11 h-11 rounded-xl bg-gray-800 border border-gray-700 flex items-center justify-center text-gray-400 group-hover:text-red-400 group-hover:border-red-800/60 transition-colors shrink-0">
-                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                  </svg>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-white">{deduping ? 'Removing duplicates...' : 'Remove Duplicates'}</p>
-                  <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">Delete duplicate companies by phone number, keeping the one with the most calls.</p>
-                </div>
-              </button>
             </div>
           </div>
 
