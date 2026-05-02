@@ -321,3 +321,4 @@ npm run enrich     # Batch AI enrichment
 3. Add environment variables in Vercel → Project Settings
 4. Deploy — auto-deploys on push to `main`
 5. Vercel cron processes scheduled emails daily at 9am UTC
+# on-market-scraper
