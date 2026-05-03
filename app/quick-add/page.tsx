@@ -3,7 +3,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { Nav } from '@/components/Nav'
 
-const TEAM_MEMBERS = ['Leonard', 'Tommaso', 'John', 'Henry']
+const TEAM_MEMBERS = [
+  'Leonard', 'Tommaso', 'John', 'Henry',
+  'Ranjeev', 'Juan', 'Matthew', 'Andreas', 'Theo', 'Adam',
+  'Charlene', 'Tia', 'Ishank', 'Maanas', 'Shaty', 'William',
+  'Zaid', 'Massi', 'Shorya',
+]
 const STORAGE_KEY = 'quickAddUser'
 
 interface ParsedCompany {

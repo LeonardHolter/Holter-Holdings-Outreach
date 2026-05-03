@@ -16,6 +16,21 @@ export interface Company {
   calls_tommaso: number
   calls_john: number
   calls_henry: number
+  calls_ranjeev: number
+  calls_juan: number
+  calls_matthew: number
+  calls_andreas: number
+  calls_theo: number
+  calls_adam: number
+  calls_charlene: number
+  calls_tia: number
+  calls_ishank: number
+  calls_maanas: number
+  calls_shaty: number
+  calls_william: number
+  calls_zaid: number
+  calls_massi: number
+  calls_shorya: number
   total_dialed: number
   last_call_sid: string | null
   andre_lead_given: boolean
@@ -117,4 +132,19 @@ export const TEAM_MEMBERS = [
   'Tommaso',
   'John',
   'Henry',
+  'Ranjeev',
+  'Juan',
+  'Matthew',
+  'Andreas',
+  'Theo',
+  'Adam',
+  'Charlene',
+  'Tia',
+  'Ishank',
+  'Maanas',
+  'Shaty',
+  'William',
+  'Zaid',
+  'Massi',
+  'Shorya',
 ]

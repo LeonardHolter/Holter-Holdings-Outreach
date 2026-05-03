@@ -3,7 +3,12 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
-const CALLERS = ['Leonard', 'Tommaso', 'John', 'Henry'] as const
+const CALLERS = [
+  'Leonard', 'Tommaso', 'John', 'Henry',
+  'Ranjeev', 'Juan', 'Matthew', 'Andreas', 'Theo', 'Adam',
+  'Charlene', 'Tia', 'Ishank', 'Maanas', 'Shaty', 'William',
+  'Zaid', 'Massi', 'Shorya',
+] as const
 
 interface CallerStats {
   name: string
