@@ -190,6 +190,12 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
   const [dialpadInput, setDialpadInput] = useState('')
   const [incomingCall, setIncomingCall] = useState<IncomingCallState>(null)
 
+  // Broker mode
+  const [brokerMode, setBrokerMode] = useState(false)
+  const [brokerNumber, setBrokerNumber] = useState('')
+  const brokerModeRef = useRef(false)
+  useEffect(() => { brokerModeRef.current = brokerMode }, [brokerMode])
+
   // Auto-dialer
   const [autoDialer, setAutoDialer] = useState(false)
   const autoDialerRef = useRef(false)
@@ -435,6 +441,66 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
     }
   }
 
+  async function handleBrokerCall() {
+    if (!deviceRef.current || !brokerNumber || callStatus !== 'idle') return
+
+    const digits = brokerNumber.replace(/\D/g, '')
+    let e164: string
+    if (digits.length === 11 && digits.startsWith('1')) {
+      e164 = `+${digits}`
+    } else if (digits.length === 10 && /^[2-9]/.test(digits)) {
+      e164 = `+1${digits}`
+    } else if (digits.length >= 10) {
+      e164 = `+${digits}`
+    } else {
+      toast.error(`Phone number too short: ${brokerNumber}`)
+      return
+    }
+
+    try {
+      setCallStatus('connecting')
+      const call = await deviceRef.current.connect({
+        params: { To: e164, CallerId: callerId, CallerName: sessionCaller },
+      })
+      activeCallRef.current = call
+
+      setUsageToday(u => u + 1)
+      setAllUsage(prev => prev.map(n => n.number === callerId ? { ...n, count: n.count + 1 } : n))
+
+      let didConnect = false
+
+      call.on('accept', () => {
+        didConnect = true
+        setCallStatus('connected')
+        setCallSid(call.parameters?.CallSid ?? '')
+        timerRef.current = setInterval(() => setDuration(d => d + 1), 1000)
+      })
+
+      call.on('disconnect', () => {
+        clearInterval(timerRef.current!)
+        activeCallRef.current = null
+        if (audioRef.current) { audioRef.current.srcObject = null }
+        if (!didConnect) {
+          setCallStatus('idle')
+          toast.error(`Call failed — number may be invalid or unreachable: ${brokerNumber}`)
+        } else {
+          setCallStatus('ended')
+        }
+      })
+
+      call.on('error', (err: Error) => {
+        clearInterval(timerRef.current!)
+        setCallStatus('idle')
+        activeCallRef.current = null
+        if (audioRef.current) { audioRef.current.srcObject = null }
+        toast.error(`Call error: ${err.message}`)
+      })
+    } catch (err) {
+      setCallStatus('idle')
+      toast.error(`Could not start call: ${String(err)}`)
+    }
+  }
+
   // ── Inbound call accept / reject ────────────────────────────
   function handleAcceptIncoming() {
     if (!incomingCall) return
@@ -560,9 +626,9 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
     pendingAutoDialRef.current = true
   }
 
-  // When call ends + auto-dialer on → start countdown
+  // When call ends + auto-dialer on → start countdown (skip in broker mode)
   useEffect(() => {
-    if (callStatus !== 'ended' || !autoDialerRef.current) return
+    if (callStatus !== 'ended' || !autoDialerRef.current || brokerModeRef.current) return
     const timers: ReturnType<typeof setTimeout>[] = []
     setAutoDialCountdown(3)
     timers.push(setTimeout(() => setAutoDialCountdown(2), 1000))
@@ -780,25 +846,40 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
               <span className="text-sm text-gray-500">{index + 1} / {queue.length}</span>
             </div>
 
-            {/* Auto-dialer toggle */}
-            <button
-              onClick={() => { setAutoDialer(a => !a); cancelAutoDialCountdown() }}
-              className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl border text-sm font-medium transition-all touch-manipulation ${
-                autoDialer
-                  ? 'bg-red-950/40 border-red-800/60 text-red-300'
-                  : 'bg-gray-900 border-gray-800 text-gray-400 hover:border-gray-600 hover:text-gray-300'
-              }`}
-            >
-              <div className="flex items-center gap-2.5">
+            {/* Auto-dialer toggle + Call Broker */}
+            <div className="flex gap-2">
+              <button
+                onClick={() => { setAutoDialer(a => !a); cancelAutoDialCountdown() }}
+                className={`flex-1 flex items-center justify-between gap-3 px-4 py-3 rounded-xl border text-sm font-medium transition-all touch-manipulation ${
+                  autoDialer
+                    ? 'bg-red-950/40 border-red-800/60 text-red-300'
+                    : 'bg-gray-900 border-gray-800 text-gray-400 hover:border-gray-600 hover:text-gray-300'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                  Auto-dialer {autoDialer ? 'ON' : 'OFF'}
+                </div>
+                <div className={`w-9 h-5 rounded-full transition-colors relative ${autoDialer ? 'bg-red-600' : 'bg-gray-700'}`}>
+                  <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${autoDialer ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                </div>
+              </button>
+              <button
+                onClick={() => { setBrokerMode(m => !m); setCallStatus('idle'); setDuration(0) }}
+                className={`flex items-center gap-2 px-4 py-3 rounded-xl border text-sm font-medium transition-all touch-manipulation whitespace-nowrap ${
+                  brokerMode
+                    ? 'bg-purple-950/40 border-purple-800/60 text-purple-300'
+                    : 'bg-gray-900 border-gray-800 text-gray-400 hover:border-gray-600 hover:text-gray-300'
+                }`}
+              >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
-                Auto-dialer {autoDialer ? 'ON' : 'OFF'}
-              </div>
-              <div className={`w-9 h-5 rounded-full transition-colors relative ${autoDialer ? 'bg-red-600' : 'bg-gray-700'}`}>
-                <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${autoDialer ? 'translate-x-4' : 'translate-x-0.5'}`} />
-              </div>
-            </button>
+                {brokerMode ? 'Queue' : 'Broker'}
+              </button>
+            </div>
 
             {/* Number health panel */}
             {allUsage.length > 0 && (
@@ -863,7 +944,115 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
           </div>
         )}
 
-        {/* Progress */}
+        {/* Broker mode card */}
+        {brokerMode && (
+          <div className="bg-gray-900 border border-purple-800/50 rounded-2xl overflow-hidden">
+            <div className="px-4 sm:px-6 pt-4 sm:pt-6 pb-3 sm:pb-4 border-b border-gray-800">
+              <label className="text-xs text-purple-400 uppercase tracking-wide font-medium">Call Broker</label>
+              <p className="text-sm text-gray-400 mt-1">Enter a phone number to call directly</p>
+            </div>
+
+            <div className="px-4 sm:px-6 py-4 sm:py-5 space-y-4">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-gray-500 uppercase tracking-wide font-medium">Phone Number</label>
+                {callStatus === 'idle' || callStatus === 'ended' ? (
+                  <div className="space-y-2">
+                    <input
+                      value={brokerNumber}
+                      onChange={e => setBrokerNumber(e.target.value)}
+                      placeholder="(555) 123-4567"
+                      className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-3 text-lg text-white font-semibold focus:outline-none focus:border-purple-500 placeholder:text-gray-600 placeholder:font-normal"
+                      autoFocus
+                    />
+                    <div className="flex items-center gap-2">
+                      {deviceReady && brokerNumber && (
+                        <button onClick={handleBrokerCall}
+                          className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-green-600 hover:bg-green-500 active:bg-green-700 text-white rounded-xl text-sm font-semibold transition-colors touch-manipulation">
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                              d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                          </svg>
+                          Call Broker
+                        </button>
+                      )}
+                      {callStatus === 'ended' && (
+                        <span className="text-xs text-gray-500 font-medium">Ended {fmtDuration(duration)}</span>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-lg font-semibold text-white">{brokerNumber}</p>
+                    <div className="flex items-center gap-2">
+                      <span className="flex items-center gap-1.5 text-sm font-semibold text-green-400">
+                        <span className="relative flex h-2.5 w-2.5">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500" />
+                        </span>
+                        {callStatus === 'connecting' ? 'Connecting…' : `In call · ${fmtDuration(duration)}`}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <button onClick={handleMute}
+                        className={`flex flex-col items-center justify-center gap-1 py-3 rounded-xl border text-xs font-medium transition-colors touch-manipulation ${
+                          isMuted ? 'border-yellow-600 bg-yellow-950/40 text-yellow-300' : 'border-gray-600 bg-gray-800 text-gray-300'
+                        }`}>
+                        <span className="text-lg">{isMuted ? '🔇' : '🎤'}</span>
+                        <span>{isMuted ? 'Muted' : 'Mute'}</span>
+                      </button>
+                      <button onClick={() => setShowDialpad(d => !d)}
+                        className={`flex flex-col items-center justify-center gap-1 py-3 rounded-xl border text-xs font-medium transition-colors touch-manipulation ${
+                          showDialpad ? 'border-blue-600 bg-blue-950/40 text-blue-300' : 'border-gray-600 bg-gray-800 text-gray-300'
+                        }`}>
+                        <span className="text-lg">⌨️</span>
+                        <span>Keypad</span>
+                      </button>
+                      <button onClick={handleHangup}
+                        className="flex flex-col items-center justify-center gap-1 py-3 rounded-xl border border-red-700 bg-red-950/40 text-red-300 text-xs font-medium transition-colors touch-manipulation">
+                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                            d="M16 8l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M5 3a16.003 16.003 0 0114 14m-1.34-3.34l-2.12-.36a2 2 0 00-1.9.7L12.5 15.5A15.045 15.045 0 018.5 11.5l1.47-2.07a2 2 0 00.7-1.9l-.36-2.12A2 2 0 008.35 3.5H5.5a2 2 0 00-2 2C3.5 14.314 9.686 20.5 18.5 20.5a2 2 0 002-2v-2.84a2 2 0 00-1.66-1.98z" />
+                        </svg>
+                        <span>Hang up</span>
+                      </button>
+                    </div>
+
+                    {showDialpad && (
+                      <div className="bg-gray-950 border border-gray-700 rounded-xl p-3 space-y-2">
+                        <div className="h-8 flex items-center px-3 bg-gray-900 rounded-lg">
+                          <span className="text-base font-mono text-gray-300 tracking-widest flex-1 text-right">
+                            {dialpadInput || <span className="text-gray-600">—</span>}
+                          </span>
+                          {dialpadInput && (
+                            <button onClick={() => setDialpadInput(prev => prev.slice(0, -1))}
+                              className="ml-2 text-gray-500 hover:text-gray-300 p-1 touch-manipulation">
+                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M3 12l6.414 6.414a2 2 0 001.414.586H19a2 2 0 002-2V7a2 2 0 00-2-2h-8.172a2 2 0 00-1.414.586L3 12z" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
+                        {[['1','2','3'],['4','5','6'],['7','8','9'],['*','0','#']].map((row, ri) => (
+                          <div key={ri} className="grid grid-cols-3 gap-2">
+                            {row.map(key => (
+                              <button key={key} onClick={() => sendDigit(key)}
+                                className="h-12 sm:h-10 rounded-xl bg-gray-800 hover:bg-gray-700 active:bg-gray-600 text-white font-semibold text-lg transition-colors border border-gray-700 touch-manipulation">
+                                {key}
+                              </button>
+                            ))}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Progress + Company card (hidden in broker mode) */}
+        {!brokerMode && <>
         <div className="w-full bg-gray-800 rounded-full h-1.5 overflow-hidden">
           <div className="h-1.5 bg-blue-500 rounded-full transition-all duration-300" style={{ width: `${progress}%` }} />
         </div>
@@ -1184,6 +1373,7 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
             </div>
           ) : null
         })()}
+        </>}
       </div>
 
     </div>
