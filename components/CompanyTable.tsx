@@ -127,6 +127,36 @@ export function CompanyTable({ initialData }: Props) {
         <EditableCell value={row.original.state} type="select-state" onSave={makeUpdater(row.original.id, 'state')} />
       ),
     }),
+    col.accessor('revenue', {
+      header: 'Inntekt',
+      size: 100,
+      cell: ({ row }) => {
+        const r = row.original.revenue
+        if (r == null) return <span className="text-gray-600 text-xs">—</span>
+        const mnok = r / 1000
+        return <span className="text-gray-300 tabular-nums text-xs">{mnok.toFixed(1)} M</span>
+      },
+    }),
+    col.accessor('employees', {
+      header: 'Ansatte',
+      size: 80,
+      cell: ({ row }) => {
+        const e = row.original.employees
+        return e ? <span className="text-gray-300 tabular-nums text-xs">{e}</span> : <span className="text-gray-600 text-xs">—</span>
+      },
+    }),
+    col.display({
+      id: 'priority',
+      header: 'Prioritet',
+      size: 90,
+      cell: ({ row }) => {
+        const r = row.original.revenue
+        if (r != null && r < 15000) return <span className="inline-flex items-center gap-1 text-xs font-medium text-green-400"><span className="w-1.5 h-1.5 rounded-full bg-green-400 shrink-0" />Høy</span>
+        if (r != null && r <= 25000) return <span className="inline-flex items-center gap-1 text-xs font-medium text-yellow-400"><span className="w-1.5 h-1.5 rounded-full bg-yellow-400 shrink-0" />Lav</span>
+        if (r == null) return <span className="inline-flex items-center gap-1 text-xs text-gray-500"><span className="w-1.5 h-1.5 rounded-full bg-gray-600 shrink-0" />Ukjent</span>
+        return <span className="inline-flex items-center gap-1 text-xs text-red-400"><span className="w-1.5 h-1.5 rounded-full bg-red-400 shrink-0" />For stor</span>
+      },
+    }),
     col.accessor('phone_number', {
       header: 'Phone',
       size: 140,
