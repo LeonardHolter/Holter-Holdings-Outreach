@@ -6,6 +6,7 @@ const LINKS = [
   { href: '/call',      label: 'Calling'    },
   { href: '/pipeline',  label: 'Companies'  },
   { href: '/demos',     label: 'Booked Demos' },
+  { href: '/stats',     label: 'Stats'      },
 ]
 
 export function Nav() {
