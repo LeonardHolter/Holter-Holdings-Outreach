@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { query } from '@/lib/db'
 import type { Company, CompanyFilters } from '@/types'
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient()
+    
     const { searchParams } = new URL(request.url)
 
     const filters: CompanyFilters = {}
@@ -21,41 +21,33 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search')
     if (search) filters.search = search
 
-    function buildQuery() {
-      let query = supabase.from('companies').select('*')
+    const conditions: string[] = []
+    const params: unknown[] = []
+    let paramIdx = 1
 
-      if (filters.regions && filters.regions.length > 0) {
-        query = query.in('state', filters.regions)
-      }
-      if (filters.responses && filters.responses.length > 0) {
-        query = query.in('reach_out_response', filters.responses)
-      }
-      if (filters.whoCalled && filters.whoCalled.length > 0) {
-        query = query.in('who_called', filters.whoCalled)
-      }
-      if (filters.search) {
-        const term = `%${filters.search}%`
-        query = query.or(
-          `company_name.ilike.${term},owners_name.ilike.${term},email.ilike.${term},notes.ilike.${term}`
-        )
-      }
-
-      return query.order('created_at', { ascending: false, nullsFirst: false })
+    if (filters.regions && filters.regions.length > 0) {
+      conditions.push(`state = ANY($${paramIdx++})`)
+      params.push(filters.regions)
+    }
+    if (filters.responses && filters.responses.length > 0) {
+      conditions.push(`reach_out_response = ANY($${paramIdx++})`)
+      params.push(filters.responses)
+    }
+    if (filters.whoCalled && filters.whoCalled.length > 0) {
+      conditions.push(`who_called = ANY($${paramIdx++})`)
+      params.push(filters.whoCalled)
+    }
+    if (filters.search) {
+      const term = `%${filters.search}%`
+      conditions.push(`(company_name ILIKE $${paramIdx} OR owners_name ILIKE $${paramIdx} OR email ILIKE $${paramIdx} OR notes ILIKE $${paramIdx})`)
+      paramIdx++
+      params.push(term)
     }
 
-    const all: Company[] = []
-    const PAGE = 1000
-    let from = 0
-    while (true) {
-      const { data, error } = await buildQuery().range(from, from + PAGE - 1)
-      if (error) throw error
-      const rows = (data as Company[]) ?? []
-      all.push(...rows)
-      if (rows.length < PAGE) break
-      from += PAGE
-    }
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
+    const rows = await query(`SELECT * FROM companies ${where} ORDER BY created_at DESC NULLS LAST`, params)
 
-    return NextResponse.json(all)
+    return NextResponse.json(rows as Company[])
   } catch (err) {
     console.error(err)
     return NextResponse.json({ error: 'Failed to fetch companies' }, { status: 500 })
@@ -64,17 +56,18 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient()
+    
     const body: Partial<Company> = await request.json()
+    const keys = Object.keys(body)
+    const cols = keys.join(', ')
+    const placeholders = keys.map((_, i) => `$${i + 1}`).join(', ')
+    const values = keys.map(k => (body as Record<string, unknown>)[k])
 
-    const { data, error } = await supabase
-      .from('companies')
-      .insert(body)
-      .select()
-      .single()
-
-    if (error) throw error
-    return NextResponse.json(data, { status: 201 })
+    const rows = await query(
+      `INSERT INTO companies (${cols}) VALUES (${placeholders}) RETURNING *`,
+      values
+    )
+    return NextResponse.json(rows[0], { status: 201 })
   } catch (err) {
     console.error(err)
     return NextResponse.json({ error: 'Failed to create company' }, { status: 500 })

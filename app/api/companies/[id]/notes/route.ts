@@ -1,20 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { query } from '@/lib/db'
 
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params
-  const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('company_notes')
-    .select('id, note, caller_name, created_at')
-    .eq('company_id', id)
-    .order('created_at', { ascending: false })
-    .limit(50)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(data ?? [])
+  
+  const rows = await query(
+    'SELECT id, note, caller_name, created_at FROM company_notes WHERE company_id = $1 ORDER BY created_at DESC LIMIT 50',
+    [id]
+  )
+  return NextResponse.json(rows)
 }
 
 export async function POST(
@@ -25,12 +22,10 @@ export async function POST(
   const { note, caller_name } = await req.json()
   if (!note?.trim()) return NextResponse.json({ error: 'note is required' }, { status: 400 })
 
-  const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('company_notes')
-    .insert({ company_id: id, note: note.trim(), caller_name: caller_name ?? null })
-    .select()
-    .single()
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(data)
+  
+  const rows = await query(
+    'INSERT INTO company_notes (company_id, note, caller_name) VALUES ($1, $2, $3) RETURNING *',
+    [id, note.trim(), caller_name ?? null]
+  )
+  return NextResponse.json(rows[0])
 }

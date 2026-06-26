@@ -2,11 +2,9 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
 
 export default function LoginPage() {
   const router = useRouter()
-  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -16,14 +14,14 @@ export default function LoginPage() {
     setError(null)
     setLoading(true)
 
-    const supabase = createClient()
-    const { error: authError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password }),
     })
 
-    if (authError) {
-      setError(authError.message)
+    if (!res.ok) {
+      setError('Invalid password')
       setLoading(false)
       return
     }
@@ -36,29 +34,14 @@ export default function LoginPage() {
     <div className="min-h-screen bg-gray-950 flex items-center justify-center px-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-white">Holter Holdings</h1>
-          <p className="text-gray-400 mt-1 text-sm">Outreach CRM</p>
+          <h1 className="text-2xl font-bold text-white">AI Receptionist Sales</h1>
+          <p className="text-gray-400 mt-1 text-sm">Sign in to continue</p>
         </div>
 
         <form
           onSubmit={handleSubmit}
           className="bg-gray-900 border border-gray-800 rounded-xl p-8 space-y-5"
         >
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1.5">
-              Email
-            </label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              autoComplete="email"
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-              placeholder="you@holterholdings.com"
-            />
-          </div>
-
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-1.5">
               Password

@@ -1,42 +1,35 @@
 import { NextRequest, NextResponse } from 'next/server'
 import twilio from 'twilio'
-import { createClient } from '@/lib/supabase/server'
+import { query } from '@/lib/db'
 
 const VoiceResponse = twilio.twiml.VoiceResponse
 
-// Twilio calls this webhook when the browser places an outbound call.
-// It returns TwiML that dials the target number and records the call.
-// It also atomically increments today's dial counter for the chosen number.
 export async function POST(request: NextRequest) {
-  const formData      = await request.formData()
-  const to            = formData.get('To')         as string | null
-  const callerIdParam = formData.get('CallerId')   as string | null
-  const callerName    = formData.get('CallerName') as string | null
+  const formData = await request.formData()
+  const to = formData.get('To') as string | null
+  const callerIdParam = formData.get('CallerId') as string | null
+  const callerName = formData.get('CallerName') as string | null
 
   if (!to) return new NextResponse('Missing To parameter', { status: 400 })
 
-  const numbers  = (process.env.TWILIO_PHONE_NUMBERS ?? '').split(',').map(n => n.trim()).filter(Boolean)
+  const numbers = (process.env.TWILIO_PHONE_NUMBERS ?? '').split(',').map(n => n.trim()).filter(Boolean)
   let callerId = callerIdParam ?? numbers[0] ?? undefined
 
-  // If the requested caller ID is locked by someone else, pick a free number.
-  // This is a safety net — the token route should already assign unique numbers,
-  // but races can happen if two callers init nearly simultaneously.
   if (callerId && callerName) {
     try {
-      const supabase = await createClient()
-      const { data: locks } = await supabase
-        .from('number_locks')
-        .select('number, caller_name')
-        .gt('expires_at', new Date().toISOString())
+      
+      const locks = await query(
+        'SELECT number, caller_name FROM number_locks WHERE expires_at > $1',
+        [new Date().toISOString()]
+      )
 
       const lockedByOthers = new Set(
-        (locks ?? [])
-          .filter(l => l.caller_name.toLowerCase() !== callerName.toLowerCase())
-          .map(l => l.number)
+        locks
+          .filter(l => (l.caller_name as string).toLowerCase() !== callerName.toLowerCase())
+          .map(l => l.number as string)
       )
 
       if (lockedByOthers.has(callerId)) {
-        // Requested number is busy — pick a free one
         const free = numbers.find(n => !lockedByOthers.has(n))
         if (free) {
           console.warn(`[voice] Number ${callerId} locked, switching to ${free} for ${callerName}`)
@@ -44,40 +37,41 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Refresh the lock for this caller's number (extends the 2-min lease)
       try {
-        await supabase
-          .from('number_locks')
-          .upsert({
-            number: callerId,
-            caller_name: callerName.toLowerCase(),
-            expires_at: new Date(Date.now() + 2 * 60 * 1000).toISOString(),
-          }, { onConflict: 'number' })
+        await query(
+          `INSERT INTO number_locks (number, caller_name, expires_at)
+           VALUES ($1, $2, $3)
+           ON CONFLICT (number) DO UPDATE SET caller_name = $2, expires_at = $3`,
+          [callerId, callerName.toLowerCase(), new Date(Date.now() + 2 * 60 * 1000).toISOString()]
+        )
       } catch {
         // non-fatal
       }
     } catch {
-      // Lock check failed — proceed with the original number
+      // Lock check failed — proceed with original number
     }
   }
 
-  // Increment daily dial count for this number (fire-and-forget, non-blocking)
   if (callerId) {
     const today = new Date().toISOString().slice(0, 10)
-    createClient().then(supabase =>
-      supabase.rpc('increment_number_usage', { p_number: callerId, p_date: today })
+    
+    query(
+      `INSERT INTO number_daily_usage (number, date, dial_count)
+       VALUES ($1, $2, 1)
+       ON CONFLICT (number, date) DO UPDATE SET dial_count = number_daily_usage.dial_count + 1`,
+      [callerId, today]
     ).catch(err => console.warn('Usage tracking failed:', err))
   }
 
   const baseUrl = `${request.nextUrl.protocol}//${request.nextUrl.host}`
 
   const cbParams = new URLSearchParams()
-  if (callerName)  cbParams.set('callerName', callerName)
-  if (callerId)    cbParams.set('callerNumber', callerId)
+  if (callerName) cbParams.set('callerName', callerName)
+  if (callerId) cbParams.set('callerNumber', callerId)
   const recordingCb = `${baseUrl}/api/twilio/recording-webhook?${cbParams.toString()}`
 
   const twiml = new VoiceResponse()
-  const dial  = twiml.dial({
+  const dial = twiml.dial({
     callerId,
     record: 'record-from-answer',
     recordingStatusCallback: recordingCb,

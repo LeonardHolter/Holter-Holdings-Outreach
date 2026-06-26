@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { query } from '@/lib/db'
 import type { Company } from '@/types'
 
 export async function PATCH(
@@ -7,30 +7,29 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = await createClient()
+    
     const { id } = await params
     const body: Partial<Company> = await request.json()
 
-    // Auto-fill last_reach_out to today whenever a real response is saved
-    // and the caller hasn't already supplied a date explicitly
     const activeResponse =
       body.reach_out_response !== undefined &&
       body.reach_out_response !== 'Not called' &&
       body.reach_out_response !== null
 
     if (activeResponse && !body.last_reach_out) {
-      body.last_reach_out = new Date().toISOString().slice(0, 10) // YYYY-MM-DD
+      body.last_reach_out = new Date().toISOString().slice(0, 10)
     }
 
-    const { data, error } = await supabase
-      .from('companies')
-      .update(body)
-      .eq('id', id)
-      .select()
-      .single()
+    const keys = Object.keys(body)
+    const sets = keys.map((k, i) => `${k} = $${i + 2}`)
+    const values = keys.map(k => (body as Record<string, unknown>)[k])
 
-    if (error) throw error
-    return NextResponse.json(data)
+    const rows = await query(
+      `UPDATE companies SET ${sets.join(', ')} WHERE id = $1 RETURNING *`,
+      [id, ...values]
+    )
+
+    return NextResponse.json(rows[0])
   } catch (err) {
     console.error(err)
     return NextResponse.json({ error: 'Failed to update company' }, { status: 500 })
@@ -42,12 +41,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = await createClient()
+    
     const { id } = await params
-
-    const { error } = await supabase.from('companies').delete().eq('id', id)
-    if (error) throw error
-
+    await query('DELETE FROM companies WHERE id = $1', [id])
     return NextResponse.json({ success: true })
   } catch (err) {
     console.error(err)

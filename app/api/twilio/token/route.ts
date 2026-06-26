@@ -1,39 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
 import twilio from 'twilio'
-import { createClient } from '@/lib/supabase/server'
+import { query } from '@/lib/db'
 
 const { AccessToken } = twilio.jwt
 const { VoiceGrant } = AccessToken
 
-const CALLERS  = [
-  'Leonard', 'Tommaso', 'John', 'Henry',
-  'Ranjeev', 'Juan', 'Matthew', 'Andreas', 'Theo', 'Adam',
-  'Charlene', 'Tia', 'Ishank', 'Maanas', 'Shaty', 'William',
-  'Zaid', 'Massi', 'Shorya',
-]
+const CALLERS = ['Leonard', 'William']
 const DAILY_CAP = 80
 
-/** Day-of-year (1–365) drives the rotation offset so it shifts automatically each day. */
 function dayOfYear(): number {
-  const now   = new Date()
+  const now = new Date()
   const start = new Date(now.getFullYear(), 0, 0)
   return Math.floor((now.getTime() - start.getTime()) / 86_400_000)
 }
 
-/**
- * Assigns a phone number to a caller.
- *
- * CRITICAL: Each concurrent caller MUST get a different number.
- * Twilio will not originate a second outbound call from a number
- * that already has an active call — it drops the second call instantly.
- *
- * Strategy:
- * 1. Each caller gets a dedicated slot: callerIdx % numCount
- *    (offset by dayOfYear for daily rotation / spam prevention)
- * 2. If that number is at daily cap, try the next unused number
- * 3. Reserve the number in Supabase so concurrent callers can't collide
- */
 async function assignNumber(callerName: string): Promise<{
   callerId: string
   usageToday: number
@@ -45,35 +26,29 @@ async function assignNumber(callerName: string): Promise<{
   if (numbers.length === 0) throw new Error('TWILIO_PHONE_NUMBERS is not set')
 
   const callerIdx = CALLERS.findIndex(c => c.toLowerCase() === callerName.toLowerCase())
-  const idx       = callerIdx >= 0 ? callerIdx : 0
-  const baseIdx   = (idx + dayOfYear()) % numbers.length
+  const idx = callerIdx >= 0 ? callerIdx : 0
+  const baseIdx = (idx + dayOfYear()) % numbers.length
 
-  const supabase = await createClient()
+  
   const today = new Date().toISOString().slice(0, 10)
 
-  // Fetch today's usage for all numbers
-  const { data: usageData } = await supabase
-    .from('number_daily_usage')
-    .select('number, dial_count')
-    .eq('date', today)
-
+  const usageData = await query(
+    'SELECT number, dial_count FROM number_daily_usage WHERE date = $1',
+    [today]
+  )
   const usageMap: Record<string, number> = {}
-  for (const row of usageData ?? []) usageMap[row.number] = row.dial_count
+  for (const row of usageData) usageMap[row.number as string] = row.dial_count as number
 
-  // Fetch numbers currently locked by OTHER callers (active sessions)
-  const { data: lockData } = await supabase
-    .from('number_locks')
-    .select('number, caller_name')
-    .gt('expires_at', new Date().toISOString())
-
+  const lockData = await query(
+    'SELECT number, caller_name FROM number_locks WHERE expires_at > $1',
+    [new Date().toISOString()]
+  )
   const lockedByOthers = new Set(
-    (lockData ?? [])
-      .filter(l => l.caller_name.toLowerCase() !== callerName.toLowerCase())
-      .map(l => l.number)
+    lockData
+      .filter(l => (l.caller_name as string).toLowerCase() !== callerName.toLowerCase())
+      .map(l => l.number as string)
   )
 
-  // Pick the best available number:
-  // Prefer the caller's dedicated slot, skip numbers locked by others
   let chosenIdx = baseIdx
   let found = false
   for (let i = 0; i < numbers.length; i++) {
@@ -85,22 +60,19 @@ async function assignNumber(callerName: string): Promise<{
       break
     }
   }
-  // If everything is locked or capped, fall back to base (better than nothing)
   if (!found) chosenIdx = baseIdx
 
   const chosen = numbers[chosenIdx]
 
-  // Lock this number for this caller (2-minute lease, refreshed each call)
   try {
-    await supabase
-      .from('number_locks')
-      .upsert({
-        number: chosen,
-        caller_name: callerName.toLowerCase(),
-        expires_at: new Date(Date.now() + 2 * 60 * 1000).toISOString(),
-      }, { onConflict: 'number' })
+    await query(
+      `INSERT INTO number_locks (number, caller_name, expires_at)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (number) DO UPDATE SET caller_name = $2, expires_at = $3`,
+      [chosen, callerName.toLowerCase(), new Date(Date.now() + 2 * 60 * 1000).toISOString()]
+    )
   } catch {
-    // non-fatal — lock table may not exist yet
+    // non-fatal
   }
 
   const allUsage = numbers.map(n => ({ number: n, count: usageMap[n] ?? 0 }))
@@ -108,9 +80,9 @@ async function assignNumber(callerName: string): Promise<{
 }
 
 export async function POST(request: NextRequest) {
-  const accountSid  = process.env.TWILIO_ACCOUNT_SID
-  const apiKey      = process.env.TWILIO_API_KEY
-  const apiSecret   = process.env.TWILIO_API_SECRET
+  const accountSid = process.env.TWILIO_ACCOUNT_SID
+  const apiKey = process.env.TWILIO_API_KEY
+  const apiSecret = process.env.TWILIO_API_SECRET
   const twimlAppSid = process.env.TWILIO_TWIML_APP_SID
 
   if (!accountSid || !apiKey || !apiSecret || !twimlAppSid) {
@@ -119,10 +91,6 @@ export async function POST(request: NextRequest) {
 
   const { callerName, clientId } = await request.json()
 
-  // Build a unique identity per browser tab so two people (or two tabs)
-  // never collide on the same Twilio Device registration.
-  // Twilio only allows ONE registered Device per identity — a second
-  // registration silently unregisters the first, killing its active call.
   const baseName = (callerName ?? 'user').replace(/\s+/g, '-').toLowerCase()
   const suffix = clientId
     ? String(clientId).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 12)
@@ -141,11 +109,11 @@ export async function POST(request: NextRequest) {
   token.addGrant(grant)
 
   return NextResponse.json({
-    token:      token.toJwt(),
-    callerId:   assignment.callerId,
+    token: token.toJwt(),
+    callerId: assignment.callerId,
     usageToday: assignment.usageToday,
-    dailyCap:   assignment.dailyCap,
-    allUsage:   assignment.allUsage,
+    dailyCap: assignment.dailyCap,
+    allUsage: assignment.allUsage,
     identity,
   })
 }

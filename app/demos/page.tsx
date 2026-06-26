@@ -1,18 +1,16 @@
 export const dynamic = 'force-dynamic'
 
-import { createClient } from '@/lib/supabase/server'
+import { query } from '@/lib/db'
 import type { Company } from '@/types'
 import { Nav } from '@/components/Nav'
 import DemoCard from '@/components/DemoCard'
 
 async function fetchBookedDemos(): Promise<Company[]> {
-  const supabase = await createClient()
-  const { data } = await supabase
-    .from('companies')
-    .select('*')
-    .eq('reach_out_response', 'Demo booked')
-    .order('next_reach_out', { ascending: true, nullsFirst: false })
-  return (data as Company[]) ?? []
+  
+  const rows = await query(
+    `SELECT * FROM companies WHERE reach_out_response = 'Demo booked' ORDER BY next_reach_out ASC NULLS LAST`
+  )
+  return rows as Company[]
 }
 
 export default async function DemosPage() {

@@ -1,32 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { query } from '@/lib/db'
 
-// Twilio posts here when an SMS is received on one of our numbers.
-// We log it to incoming_messages and return an empty TwiML response.
 export async function POST(request: NextRequest) {
   const form = await request.formData()
 
-  const messageSid  = form.get('MessageSid')  as string | null
-  const from        = form.get('From')         as string | null
-  const to          = form.get('To')           as string | null
-  const body        = form.get('Body')         as string | null
+  const messageSid = form.get('MessageSid') as string | null
+  const from = form.get('From') as string | null
+  const to = form.get('To') as string | null
+  const body = form.get('Body') as string | null
 
   if (from && to) {
-    const supabase = await createClient()
-    await supabase.from('incoming_messages').upsert(
-      {
-        twilio_sid:   messageSid,
-        from_number:  from,
-        to_number:    to,
-        body:         body ?? '',
-        direction:    'inbound',
-        status:       'received',
-      },
-      { onConflict: 'twilio_sid', ignoreDuplicates: true }
+    
+    await query(
+      `INSERT INTO incoming_messages (twilio_sid, from_number, to_number, body, direction, status)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (twilio_sid) DO NOTHING`,
+      [messageSid, from, to, body ?? '', 'inbound', 'received']
     )
   }
 
-  // Empty TwiML — no auto-reply
   return new NextResponse('<?xml version="1.0" encoding="UTF-8"?><Response></Response>', {
     headers: { 'Content-Type': 'text/xml' },
   })

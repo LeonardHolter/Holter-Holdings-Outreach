@@ -1,7 +1,7 @@
 export const dynamic = 'force-dynamic'
 
 import { Suspense } from 'react'
-import { createClient } from '@/lib/supabase/server'
+import { query } from '@/lib/db'
 import { CompanyTable } from '@/components/CompanyTable'
 import { StatsPanel } from '@/components/StatsPanel'
 import { FilterBar } from '@/components/FilterBar'
@@ -12,44 +12,33 @@ interface PageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }
 
-function buildQuery(supabase: Awaited<ReturnType<typeof createClient>>, filters: CompanyFilters) {
-  let query = supabase.from('companies').select('*')
+async function fetchCompanies(filters: CompanyFilters): Promise<Company[]> {
+  
+  const conditions: string[] = []
+  const params: unknown[] = []
+  let paramIdx = 1
 
   if (filters.regions && filters.regions.length > 0) {
-    query = query.in('state', filters.regions)
+    conditions.push(`state = ANY($${paramIdx++})`)
+    params.push(filters.regions)
   }
   if (filters.responses && filters.responses.length > 0) {
-    query = query.in('reach_out_response', filters.responses)
+    conditions.push(`reach_out_response = ANY($${paramIdx++})`)
+    params.push(filters.responses)
   }
   if (filters.whoCalled && filters.whoCalled.length > 0) {
-    query = query.in('who_called', filters.whoCalled)
+    conditions.push(`who_called = ANY($${paramIdx++})`)
+    params.push(filters.whoCalled)
   }
   if (filters.search) {
     const term = `%${filters.search}%`
-    query = query.or(
-      `company_name.ilike.${term},owners_name.ilike.${term},email.ilike.${term},notes.ilike.${term}`
-    )
+    conditions.push(`(company_name ILIKE $${paramIdx} OR owners_name ILIKE $${paramIdx} OR email ILIKE $${paramIdx} OR notes ILIKE $${paramIdx})`)
+    params.push(term)
   }
 
-  return query.order('created_at', { ascending: false })
-}
-
-async function fetchCompanies(filters: CompanyFilters): Promise<Company[]> {
-  const supabase = await createClient()
-  const all: Company[] = []
-  const PAGE = 1000
-  let from = 0
-
-  while (true) {
-    const { data, error } = await buildQuery(supabase, filters).range(from, from + PAGE - 1)
-    if (error) { console.error('Error fetching companies:', error); break }
-    const rows = (data as Company[]) ?? []
-    all.push(...rows)
-    if (rows.length < PAGE) break
-    from += PAGE
-  }
-
-  return all
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
+  const rows = await query(`SELECT * FROM companies ${where} ORDER BY created_at DESC NULLS LAST`, params)
+  return rows as Company[]
 }
 
 function parseFilters(sp: Record<string, string | string[] | undefined>): CompanyFilters {

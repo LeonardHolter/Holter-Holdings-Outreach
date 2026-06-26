@@ -5,16 +5,10 @@ import { toast } from 'sonner'
 import { format } from 'date-fns'
 import type { Company, CompanyNote } from '@/types'
 import { RESPONSE_STATUSES, TEAM_MEMBERS, REGIONS } from '@/types'
-import { createClient } from '@/lib/supabase/client'
 
 interface Props {
   initialQueue: Company[]
   dialNumber?: string
-}
-
-interface PresencePayload {
-  companyId: string
-  callerName: string
 }
 
 type CallStatus = 'idle' | 'connecting' | 'connected' | 'ended'
@@ -145,11 +139,8 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
     else localStorage.removeItem('sessionCaller')
   }
 
-  // Presence
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const channelRef                    = useRef<any>(null)
-  const [claimedByOthers, setClaimedByOthers] = useState<Map<string, string>>(new Map())
-  const [activeCallers, setActiveCallers]     = useState(0)
+  const claimedByOthers = useRef(new Map<string, string>()).current
+  const activeCallers = 0
 
   // Editable fields
   const [response, setResponse]       = useState('')
@@ -234,50 +225,6 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
   }, [])
 
   useState(() => { if (queue[0]) loadCompany(queue[0]) })
-
-  // ── Realtime presence ────────────────────────────────────────
-  useEffect(() => {
-    const supabase = createClient()
-    const channel = supabase.channel('calling-session', {
-      config: { presence: { key: SESSION_ID } },
-    })
-    channel.on('presence', { event: 'sync' }, () => {
-      const ps = channel.presenceState<PresencePayload>()
-      const claimed = new Map<string, string>()
-      let others = 0
-      for (const [key, presences] of Object.entries(ps)) {
-        if (key === SESSION_ID) continue
-        others++
-        for (const p of presences as PresencePayload[]) {
-          if (p.companyId) claimed.set(p.companyId, p.callerName || 'Someone')
-        }
-      }
-      setClaimedByOthers(claimed)
-      setActiveCallers(others)
-    })
-    channel.subscribe(async (status: string) => {
-      if (status === 'SUBSCRIBED' && initialQueue[0]) {
-        await channel.track({ companyId: initialQueue[0].id, callerName: '' })
-      }
-    })
-    channelRef.current = channel
-    return () => { channel.untrack(); channel.unsubscribe() }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    const ch = channelRef.current
-    if (!ch || !company) return
-    ch.track({ companyId: company.id, callerName: sessionCaller })
-  }, [company?.id, sessionCaller]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    if (!company || !claimedByOthers.has(company.id)) return
-    const callerName = claimedByOthers.get(company.id)
-    toast.warning(`${callerName} is already calling ${company.company_name} — moving you to next`)
-    const next = findNextUnclaimed(index + 1, queue, claimedByOthers)
-    if (next === -1) setDone(true)
-    else { setIndex(next); loadCompany(queue[next]) }
-  }, [claimedByOthers]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Twilio Device ────────────────────────────────────────────
   useEffect(() => {

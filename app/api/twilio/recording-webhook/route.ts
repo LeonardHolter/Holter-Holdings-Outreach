@@ -1,47 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { query } from '@/lib/db'
 
-// Twilio posts here when a recording is ready (async, 30-60s after call ends).
-// We save the recording metadata to call_recordings and link it to the company.
 export async function POST(request: NextRequest) {
   const formData = await request.formData()
 
-  const callSid      = formData.get('CallSid')           as string
-  const recordingSid = formData.get('RecordingSid')       as string
-  const recordingUrl = formData.get('RecordingUrl')       as string
-  const duration     = formData.get('RecordingDuration')  as string
+  const callSid = formData.get('CallSid') as string
+  const recordingSid = formData.get('RecordingSid') as string
+  const recordingUrl = formData.get('RecordingUrl') as string
+  const duration = formData.get('RecordingDuration') as string
 
-  // callerName + callerNumber were embedded in the callback URL by the voice webhook
-  const callerName   = request.nextUrl.searchParams.get('callerName')   ?? null
+  const callerName = request.nextUrl.searchParams.get('callerName') ?? null
   const callerNumber = request.nextUrl.searchParams.get('callerNumber') ?? null
 
   if (!callSid || !recordingUrl) {
     return NextResponse.json({ error: 'Missing params' }, { status: 400 })
   }
 
-  const supabase = await createClient()
+  
 
-  // Find the company that owns this callSid
-  const { data: company } = await supabase
-    .from('companies')
-    .select('id, who_called')
-    .eq('last_call_sid', callSid)
-    .single()
+  const companies = await query(
+    'SELECT id, who_called FROM companies WHERE last_call_sid = $1 LIMIT 1',
+    [callSid]
+  )
+  const company = companies[0] as { id: string; who_called: string | null } | undefined
 
-  const row = {
-    call_sid:         callSid,
-    recording_url:    `${recordingUrl}.mp3`,
-    duration_seconds: duration ? parseInt(duration, 10) : null,
-    called_by:        callerName ?? company?.who_called ?? null,
-    caller_name:      callerName,
-    caller_number:    callerNumber,
-  }
+  const companyId = company?.id ?? null
+  const calledBy = callerName ?? company?.who_called ?? null
 
-  if (company) {
-    await supabase.from('call_recordings').insert({ company_id: company.id, ...row })
-  } else {
-    console.warn(`Recording ${callSid} could not be matched to a company — saving without company_id`)
-  }
+  await query(
+    `INSERT INTO call_recordings (company_id, call_sid, recording_url, duration_seconds, called_by, caller_name, caller_number)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [companyId, callSid, `${recordingUrl}.mp3`, duration ? parseInt(duration, 10) : null, calledBy, callerName, callerNumber]
+  )
 
   console.log(`Recording saved: ${recordingSid} for call ${callSid} by ${callerName ?? 'unknown'}`)
   return NextResponse.json({ ok: true })

@@ -12,15 +12,11 @@
     "prepare": "husky"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.78.0",
-    "@supabase/ssr": "^0.9.0",
-    "@supabase/supabase-js": "^2.99.1",
+    "@neondatabase/serverless": "^1.1.0",
     "@tanstack/react-table": "^8.21.3",
     "@twilio/voice-sdk": "^2.18.0",
     "date-fns": "^4.1.0",
-    "googleapis": "^171.4.0",
     "next": "16.1.6",
-    "pg": "^8.20.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "sonner": "^2.0.7",
