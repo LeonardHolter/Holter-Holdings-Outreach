@@ -25,9 +25,15 @@ CREATE TABLE companies (
   google_place_id TEXT,
   google_reviews INTEGER,
   google_rating NUMERIC(3,1),
+  org_nr TEXT,            -- Norwegian org number (dedup key for scraped data)
+  revenue BIGINT,         -- driftsinntekter in thousands NOK (from proff.no)
+  employees TEXT,         -- employee count / range (from proff.no)
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- org_nr is the natural dedup key for scraped companies.
+CREATE UNIQUE INDEX IF NOT EXISTS companies_org_nr_uniq ON companies(org_nr) WHERE org_nr IS NOT NULL;
 
 CREATE TABLE company_notes (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
