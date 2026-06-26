@@ -15,28 +15,14 @@ interface PageProps {
 function buildQuery(supabase: Awaited<ReturnType<typeof createClient>>, filters: CompanyFilters) {
   let query = supabase.from('companies').select('*')
 
-  if (filters.states && filters.states.length > 0) {
-    query = query.in('state', filters.states)
+  if (filters.regions && filters.regions.length > 0) {
+    query = query.in('state', filters.regions)
   }
   if (filters.responses && filters.responses.length > 0) {
     query = query.in('reach_out_response', filters.responses)
   }
   if (filters.whoCalled && filters.whoCalled.length > 0) {
     query = query.in('who_called', filters.whoCalled)
-  }
-  if (filters.addedBy && filters.addedBy.length > 0) {
-    query = query.in('added_by', filters.addedBy)
-  }
-  if (filters.nextReachOutFrom) {
-    query = query.gte('next_reach_out', filters.nextReachOutFrom)
-  }
-  if (filters.nextReachOutTo) {
-    query = query.lte('next_reach_out', filters.nextReachOutTo)
-  }
-  if (filters.notCalled) {
-    query = query.eq('reach_out_response', 'Not called')
-  } else if (filters.introMeetings) {
-    query = query.eq('reach_out_response', 'Intro-meeting wanted')
   }
   if (filters.search) {
     const term = `%${filters.search}%`
@@ -45,7 +31,7 @@ function buildQuery(supabase: Awaited<ReturnType<typeof createClient>>, filters:
     )
   }
 
-  return query.order('google_reviews', { ascending: false, nullsFirst: false })
+  return query.order('created_at', { ascending: false })
 }
 
 async function fetchCompanies(filters: CompanyFilters): Promise<Company[]> {
@@ -73,15 +59,10 @@ function parseFilters(sp: Record<string, string | string[] | undefined>): Compan
     return v ? v.split(',') : undefined
   }
   return {
-    states: arr('states'),
+    regions: arr('regions'),
     responses: arr('responses'),
     whoCalled: arr('whoCalled'),
-    addedBy: arr('addedBy'),
-    nextReachOutFrom: str('nextReachOutFrom'),
-    nextReachOutTo: str('nextReachOutTo'),
     search: str('search'),
-    notCalled: str('notCalled') === 'true',
-    introMeetings: str('introMeetings') === 'true',
   }
 }
 
@@ -105,7 +86,6 @@ export default async function HomePage({ searchParams }: PageProps) {
     <div className="flex flex-col h-[100dvh] overflow-hidden bg-gray-950">
       <Nav />
 
-      {/* Stats + Table */}
       <div className="flex flex-col flex-1 overflow-hidden px-4 pt-3 gap-3">
         <Suspense fallback={<TableSkeleton />}>
           <TableSection filters={filters} />

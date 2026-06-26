@@ -1,16 +1,14 @@
 import type { Metadata, Viewport } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { Toaster } from 'sonner'
-import IncomingCallListener from '@/components/IncomingCallListener'
-import { Suspense } from 'react'
 import './globals.css'
 
 const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] })
 const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'Holter Holdings — Outreach CRM',
-  description: 'Garage door company acquisition outreach tracker',
+  title: 'AI Receptionist Sales',
+  description: 'Norwegian AI receptionist voice agent sales tool',
 }
 
 export const viewport: Viewport = {
@@ -24,9 +22,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className="dark">
       <body className={`${geistSans.variable} ${geistMono.variable} bg-gray-950 text-gray-100 antialiased`}>
         {children}
-        <Suspense fallback={null}>
-          <IncomingCallListener />
-        </Suspense>
         <Toaster
           theme="dark"
           position="bottom-right"

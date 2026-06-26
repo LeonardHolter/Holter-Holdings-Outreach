@@ -6,8 +6,8 @@ export async function getCompanies(filters?: CompanyFilters): Promise<Company[]>
 
   let query = supabase.from('companies').select('*')
 
-  if (filters?.states && filters.states.length > 0) {
-    query = query.in('state', filters.states)
+  if (filters?.regions && filters.regions.length > 0) {
+    query = query.in('state', filters.regions)
   }
 
   if (filters?.responses && filters.responses.length > 0) {
@@ -18,22 +18,6 @@ export async function getCompanies(filters?: CompanyFilters): Promise<Company[]>
     query = query.in('who_called', filters.whoCalled)
   }
 
-  if (filters?.nextReachOutFrom) {
-    query = query.gte('next_reach_out', filters.nextReachOutFrom)
-  }
-
-  if (filters?.nextReachOutTo) {
-    query = query.lte('next_reach_out', filters.nextReachOutTo)
-  }
-
-  if (filters?.notCalled) {
-    query = query.eq('reach_out_response', 'Not called')
-  }
-
-  if (filters?.introMeetings) {
-    query = query.eq('reach_out_response', 'Intro-meeting wanted')
-  }
-
   if (filters?.search) {
     const term = `%${filters.search}%`
     query = query.or(
@@ -41,7 +25,7 @@ export async function getCompanies(filters?: CompanyFilters): Promise<Company[]>
     )
   }
 
-  query = query.order('google_reviews', { ascending: false, nullsFirst: false })
+  query = query.order('created_at', { ascending: false, nullsFirst: false })
 
   const { data, error } = await query
 

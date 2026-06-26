@@ -2,7 +2,7 @@
 
 import { useRouter, useSearchParams, usePathname } from 'next/navigation'
 import { useCallback, useState } from 'react'
-import { STATES, RESPONSE_STATUSES, TEAM_MEMBERS } from '@/types'
+import { REGIONS, RESPONSE_STATUSES, TEAM_MEMBERS } from '@/types'
 
 interface MultiSelectProps {
   label: string
@@ -79,15 +79,12 @@ export function FilterBar() {
     return v ? v.split(',') : []
   }
 
-  const states = getArrayParam('states')
+  const regions = getArrayParam('regions')
   const responses = getArrayParam('responses')
   const whoCalled = getArrayParam('whoCalled')
-  const addedBy = getArrayParam('addedBy')
-  const nextReachOutFrom = getParam('nextReachOutFrom')
-  const nextReachOutTo = getParam('nextReachOutTo')
   const search = getParam('search')
   const notCalled = searchParams.get('notCalled') === 'true'
-  const introMeetings = searchParams.get('introMeetings') === 'true'
+  const demoBooked = searchParams.get('demoBooked') === 'true'
 
   const updateParams = useCallback((updates: Record<string, string | null>) => {
     const params = new URLSearchParams(searchParams.toString())
@@ -101,12 +98,11 @@ export function FilterBar() {
     router.push(`${pathname}?${params.toString()}`)
   }, [searchParams, router, pathname])
 
-  const hasFilters = states.length > 0 || responses.length > 0 || whoCalled.length > 0 ||
-    addedBy.length > 0 || nextReachOutFrom || nextReachOutTo || search || notCalled || introMeetings
+  const hasFilters = regions.length > 0 || responses.length > 0 || whoCalled.length > 0 ||
+    search || notCalled || demoBooked
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {/* Search */}
       <div className="relative">
         <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -121,10 +117,10 @@ export function FilterBar() {
       </div>
 
       <MultiSelect
-        label="State"
-        options={STATES}
-        selected={states}
-        onChange={vals => updateParams({ states: vals.join(',') || null })}
+        label="Region"
+        options={REGIONS}
+        selected={regions}
+        onChange={vals => updateParams({ regions: vals.join(',') || null })}
       />
 
       <MultiSelect
@@ -141,34 +137,8 @@ export function FilterBar() {
         onChange={vals => updateParams({ whoCalled: vals.join(',') || null })}
       />
 
-      <MultiSelect
-        label="Added By"
-        options={TEAM_MEMBERS}
-        selected={addedBy}
-        onChange={vals => updateParams({ addedBy: vals.join(',') || null })}
-      />
-
-      {/* Date range */}
-      <div className="flex items-center gap-1">
-        <span className="text-gray-500 text-xs">Next:</span>
-        <input
-          type="date"
-          value={nextReachOutFrom}
-          onChange={e => updateParams({ nextReachOutFrom: e.target.value || null })}
-          className="bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-xs text-gray-300 focus:outline-none focus:border-blue-500"
-        />
-        <span className="text-gray-600 text-xs">→</span>
-        <input
-          type="date"
-          value={nextReachOutTo}
-          onChange={e => updateParams({ nextReachOutTo: e.target.value || null })}
-          className="bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-xs text-gray-300 focus:outline-none focus:border-blue-500"
-        />
-      </div>
-
-      {/* Quick filters */}
       <button
-        onClick={() => updateParams({ notCalled: notCalled ? null : 'true', introMeetings: null })}
+        onClick={() => updateParams({ notCalled: notCalled ? null : 'true', demoBooked: null })}
         className={`px-3 py-1.5 rounded-lg border text-sm transition-colors ${
           notCalled
             ? 'border-gray-500 bg-gray-700 text-gray-200'
@@ -179,14 +149,14 @@ export function FilterBar() {
       </button>
 
       <button
-        onClick={() => updateParams({ introMeetings: introMeetings ? null : 'true', notCalled: null })}
+        onClick={() => updateParams({ demoBooked: demoBooked ? null : 'true', notCalled: null })}
         className={`px-3 py-1.5 rounded-lg border text-sm transition-colors ${
-          introMeetings
+          demoBooked
             ? 'border-green-600 bg-green-950/40 text-green-300'
             : 'border-gray-700 bg-gray-800 text-gray-400 hover:border-gray-600 hover:text-gray-300'
         }`}
       >
-        Intro meetings
+        Demo booked
       </button>
 
       {hasFilters && (

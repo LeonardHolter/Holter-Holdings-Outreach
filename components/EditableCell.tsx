@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { STATES, RESPONSE_STATUSES, TEAM_MEMBERS } from '@/types'
+import { REGIONS, RESPONSE_STATUSES, TEAM_MEMBERS } from '@/types'
 import { format, isValid, parseISO } from 'date-fns'
 
 type CellType = 'text' | 'textarea' | 'number' | 'select-state' | 'select-response' | 'select-caller' | 'date' | 'email' | 'phone'
@@ -136,7 +136,7 @@ export function EditableCell({ value, type, onSave, className = '' }: EditableCe
           className="w-full bg-gray-800 border border-blue-500 rounded px-2 py-1 text-sm text-white focus:outline-none"
         >
           <option value="">—</option>
-          {STATES.map(s => <option key={s} value={s}>{s}</option>)}
+          {REGIONS.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
       )
     }

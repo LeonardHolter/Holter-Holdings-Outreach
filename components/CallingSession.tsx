@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
 import type { Company, CompanyNote } from '@/types'
-import { RESPONSE_STATUSES, TEAM_MEMBERS, STATES } from '@/types'
+import { RESPONSE_STATUSES, TEAM_MEMBERS, REGIONS } from '@/types'
 import { createClient } from '@/lib/supabase/client'
 
 interface Props {
@@ -374,18 +374,15 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
   async function handleCall() {
     if (!deviceRef.current || !phoneNumber || callStatus !== 'idle') return
 
-    // Normalize to E.164
     const digits = phoneNumber.replace(/\D/g, '')
-    // 11 digits starting with 1 → US long form (+1XXXXXXXXXX)
-    // 10 digits with valid US area code (2-9) → prepend +1
-    // Anything else with ≥10 digits → pass as +digits and let Twilio decide
-    // Fewer than 10 digits → too short to be valid
     let e164: string
-    if (digits.length === 11 && digits.startsWith('1')) {
+    if (digits.length === 8 && /^[2-9]/.test(digits)) {
+      e164 = `+47${digits}`
+    } else if (digits.length === 10 && digits.startsWith('47')) {
       e164 = `+${digits}`
-    } else if (digits.length === 10 && /^[2-9]/.test(digits)) {
-      e164 = `+1${digits}`
-    } else if (digits.length >= 10) {
+    } else if (digits.startsWith('47') && digits.length > 10) {
+      e164 = `+${digits}`
+    } else if (digits.length >= 8) {
       e164 = `+${digits}`
     } else {
       toast.error(`Phone number too short: ${phoneNumber}`)
@@ -446,11 +443,13 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
 
     const digits = brokerNumber.replace(/\D/g, '')
     let e164: string
-    if (digits.length === 11 && digits.startsWith('1')) {
+    if (digits.length === 8 && /^[2-9]/.test(digits)) {
+      e164 = `+47${digits}`
+    } else if (digits.length === 10 && digits.startsWith('47')) {
       e164 = `+${digits}`
-    } else if (digits.length === 10 && /^[2-9]/.test(digits)) {
-      e164 = `+1${digits}`
-    } else if (digits.length >= 10) {
+    } else if (digits.startsWith('47') && digits.length > 10) {
+      e164 = `+${digits}`
+    } else if (digits.length >= 8) {
       e164 = `+${digits}`
     } else {
       toast.error(`Phone number too short: ${brokerNumber}`)
@@ -740,7 +739,7 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
           </p>
         </div>
         <div className="flex gap-3">
-          <a href="/" className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg text-sm transition-colors">Back to Pipeline</a>
+          <a href="/pipeline" className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg text-sm transition-colors">Back to Companies</a>
           <button onClick={() => { setIndex(0); setDone(false); if (queue[0]) loadCompany(queue[0]) }}
             className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm transition-colors">Start over</button>
         </div>
@@ -1186,12 +1185,12 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
             </Field>
             </div>
 
-            {/* State */}
-            <Field label="State">
+            {/* Region */}
+            <Field label="Region">
               <select value={state} onChange={e => setState(e.target.value)}
                 className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
                 <option value="">—</option>
-                {STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                {REGIONS.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </Field>
 
@@ -1390,9 +1389,9 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 function getResponseButtonStyle(r: string): string {
-  if (r === 'Intro-meeting wanted') return 'border-green-600 bg-green-950/50 text-green-300'
-  if (r === 'Owner is not interested' || r === 'Already acquired') return 'border-red-700 bg-red-950/50 text-red-300'
-  if (r === 'Left a message to the owner' || r === 'Call back on Monday') return 'border-yellow-600 bg-yellow-950/50 text-yellow-300'
-  if (r === 'Not called') return 'border-gray-600 bg-gray-800 text-gray-300'
+  if (r === 'Demo booked') return 'border-green-600 bg-green-950/50 text-green-300'
+  if (r === 'Not interested' || r === 'Wrong number') return 'border-red-700 bg-red-950/50 text-red-300'
+  if (r === 'Call back later') return 'border-yellow-600 bg-yellow-950/50 text-yellow-300'
+  if (r === 'No answer') return 'border-orange-600 bg-orange-950/50 text-orange-300'
   return 'border-blue-600 bg-blue-950/50 text-blue-300'
 }

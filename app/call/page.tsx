@@ -9,10 +9,6 @@ async function fetchQueue(): Promise<Company[]> {
   const supabase = await createClient()
   const today = new Date().toISOString().slice(0, 10)
 
-  // 1. "Not called" — sorted by google reviews desc
-  // 2. Previously contacted & due for re-call (next_reach_out <= today or null) —
-  //    sorted by next_reach_out asc so the most overdue surface first.
-  //    Null next_reach_out (legacy rows) are treated as due immediately.
   const [notCalled, previouslyContacted] = await Promise.all([
     supabase
       .from('companies')
@@ -25,7 +21,7 @@ async function fetchQueue(): Promise<Company[]> {
       .select('*')
       .not('reach_out_response', 'eq', 'Not called')
       .not('reach_out_response', 'is', null)
-      .not('reach_out_response', 'in', '("Owner is not interested","Intro-meeting wanted","Already acquired","Not a garage door service company","Number does not exist")')
+      .not('reach_out_response', 'in', '("Not interested","Demo booked","Wrong number")')
       .or(`next_reach_out.lte.${today},next_reach_out.is.null`)
       .order('next_reach_out', { ascending: true, nullsFirst: true })
       .limit(2000),
@@ -39,7 +35,6 @@ async function fetchQueue(): Promise<Company[]> {
 
 async function fetchByPhone(phone: string): Promise<Company | null> {
   const supabase = await createClient()
-  // Try exact match first
   const { data } = await supabase
     .from('companies')
     .select('*')
@@ -48,14 +43,13 @@ async function fetchByPhone(phone: string): Promise<Company | null> {
     .single()
   if (data) return data as Company
 
-  // Fallback: try common formats (with/without +1 prefix, parens, dashes)
   const digits = phone.replace(/\D/g, '')
   const variants = [
     digits,
     `+${digits}`,
-    `+1${digits}`,
-    digits.length === 11 && digits.startsWith('1') ? digits.slice(1) : null,
-    digits.length === 11 && digits.startsWith('1') ? `+${digits}` : null,
+    `+47${digits}`,
+    digits.length === 10 && digits.startsWith('47') ? `+${digits}` : null,
+    digits.length === 10 && digits.startsWith('47') ? digits.slice(2) : null,
   ].filter(Boolean) as string[]
 
   for (const v of variants) {
@@ -74,11 +68,9 @@ export default async function CallPage({ searchParams }: { searchParams: Promise
   const [queue, params] = await Promise.all([fetchQueue(), searchParams])
 
   const TERMINAL_STATUSES = new Set([
-    'Owner is not interested',
-    'Intro-meeting wanted',
-    'Already acquired',
-    'Not a garage door service company',
-    'Number does not exist',
+    'Not interested',
+    'Demo booked',
+    'Wrong number',
   ])
 
   let finalQueue = queue

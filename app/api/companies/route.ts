@@ -9,8 +9,8 @@ export async function GET(request: NextRequest) {
 
     const filters: CompanyFilters = {}
 
-    const states = searchParams.get('states')
-    if (states) filters.states = states.split(',')
+    const regions = searchParams.get('regions')
+    if (regions) filters.regions = regions.split(',')
 
     const responses = searchParams.get('responses')
     if (responses) filters.responses = responses.split(',')
@@ -18,44 +18,20 @@ export async function GET(request: NextRequest) {
     const whoCalled = searchParams.get('whoCalled')
     if (whoCalled) filters.whoCalled = whoCalled.split(',')
 
-    const nextReachOutFrom = searchParams.get('nextReachOutFrom')
-    if (nextReachOutFrom) filters.nextReachOutFrom = nextReachOutFrom
-
-    const nextReachOutTo = searchParams.get('nextReachOutTo')
-    if (nextReachOutTo) filters.nextReachOutTo = nextReachOutTo
-
     const search = searchParams.get('search')
     if (search) filters.search = search
-
-    const notCalled = searchParams.get('notCalled')
-    if (notCalled === 'true') filters.notCalled = true
-
-    const introMeetings = searchParams.get('introMeetings')
-    if (introMeetings === 'true') filters.introMeetings = true
 
     function buildQuery() {
       let query = supabase.from('companies').select('*')
 
-      if (filters.states && filters.states.length > 0) {
-        query = query.in('state', filters.states)
+      if (filters.regions && filters.regions.length > 0) {
+        query = query.in('state', filters.regions)
       }
       if (filters.responses && filters.responses.length > 0) {
         query = query.in('reach_out_response', filters.responses)
       }
       if (filters.whoCalled && filters.whoCalled.length > 0) {
         query = query.in('who_called', filters.whoCalled)
-      }
-      if (filters.nextReachOutFrom) {
-        query = query.gte('next_reach_out', filters.nextReachOutFrom)
-      }
-      if (filters.nextReachOutTo) {
-        query = query.lte('next_reach_out', filters.nextReachOutTo)
-      }
-      if (filters.notCalled) {
-        query = query.eq('reach_out_response', 'Not called')
-      }
-      if (filters.introMeetings) {
-        query = query.eq('reach_out_response', 'Intro-meeting wanted')
       }
       if (filters.search) {
         const term = `%${filters.search}%`
@@ -64,7 +40,7 @@ export async function GET(request: NextRequest) {
         )
       }
 
-      return query.order('google_reviews', { ascending: false, nullsFirst: false })
+      return query.order('created_at', { ascending: false, nullsFirst: false })
     }
 
     const all: Company[] = []
