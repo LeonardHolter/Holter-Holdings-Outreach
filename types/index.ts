@@ -17,6 +17,9 @@ export interface Company {
   state: string | null
   google_reviews: number | null
   google_rating: number | null
+  org_nr: string | null
+  revenue: number | null
+  employees: string | null
   calls_leonard: number
   calls_william: number
   total_dialed: number

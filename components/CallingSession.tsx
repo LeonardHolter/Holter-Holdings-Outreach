@@ -38,6 +38,16 @@ function callbackMatchesNow(c: Company): boolean {
   return !!(c.callback_day || c.callback_time)
 }
 
+// Revenue-tier lead priority (driftsinntekter in thousands NOK). Lower = higher
+// priority. Mirrors PRIORITY_ORDER_BY in lib/db.ts.
+function revenuePriority(c: Company): number {
+  const r = c.revenue
+  if (r != null && r < 15000) return 1   // under 15 MNOK — real shop, real pain
+  if (r != null && r <= 25000) return 2  // 15–25 MNOK — lower priority
+  if (r == null) return 3                // unknown revenue
+  return 4                               // over 25 MNOK — too big, skip
+}
+
 function sortQueueByCallback(q: Company[]): Company[] {
   const score = (c: Company): number => {
     const notCalled = c.reach_out_response === 'Not called' || !c.reach_out_response
@@ -50,7 +60,9 @@ function sortQueueByCallback(q: Company[]): Company[] {
   return [...q].sort((a, b) => {
     const sd = score(a) - score(b)
     if (sd !== 0) return sd
-    return (b.google_reviews ?? 0) - (a.google_reviews ?? 0)
+    const pd = revenuePriority(a) - revenuePriority(b)
+    if (pd !== 0) return pd
+    return (b.revenue ?? 0) - (a.revenue ?? 0)
   })
 }
 

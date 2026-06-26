@@ -1,6 +1,6 @@
 export const dynamic = 'force-dynamic'
 
-import { query } from '@/lib/db'
+import { query, PRIORITY_ORDER_BY } from '@/lib/db'
 import { CallingSession } from '@/components/CallingSession'
 import { Nav } from '@/components/Nav'
 import type { Company } from '@/types'
@@ -13,7 +13,7 @@ async function fetchQueue(): Promise<Company[]> {
     query(
       `SELECT * FROM companies
        WHERE reach_out_response = 'Not called' OR reach_out_response IS NULL
-       ORDER BY google_reviews DESC NULLS LAST
+       ORDER BY ${PRIORITY_ORDER_BY}
        LIMIT 5000`
     ),
     query(

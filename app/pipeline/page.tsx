@@ -1,7 +1,7 @@
 export const dynamic = 'force-dynamic'
 
 import { Suspense } from 'react'
-import { query } from '@/lib/db'
+import { query, PRIORITY_ORDER_BY } from '@/lib/db'
 import { CompanyTable } from '@/components/CompanyTable'
 import { StatsPanel } from '@/components/StatsPanel'
 import { FilterBar } from '@/components/FilterBar'
@@ -37,7 +37,7 @@ async function fetchCompanies(filters: CompanyFilters): Promise<Company[]> {
   }
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
-  const rows = await query(`SELECT * FROM companies ${where} ORDER BY created_at DESC NULLS LAST`, params)
+  const rows = await query(`SELECT * FROM companies ${where} ORDER BY ${PRIORITY_ORDER_BY}`, params)
   return rows as Company[]
 }
 
