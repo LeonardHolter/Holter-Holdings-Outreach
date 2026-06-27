@@ -176,20 +176,29 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
   }
 
   async function startRecording() {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      toast.error('Recording not supported on this browser')
+      return
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-        ? 'audio/webm;codecs=opus'
-        : 'audio/webm'
-      const mr = new MediaRecorder(stream, { mimeType })
+      // Pick the best supported format — Safari needs mp4, Chrome/Firefox use webm
+      const mimeType = [
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/mp4',
+        'audio/ogg;codecs=opus',
+      ].find(t => MediaRecorder.isTypeSupported(t)) ?? ''
+      const mr = new MediaRecorder(stream, mimeType ? { mimeType } : undefined)
       chunksRef.current = []
       mr.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data) }
       mr.start(1000)
       mediaRecorderRef.current = mr
       recordingStartRef.current = Date.now()
       setIsRecording(true)
-    } catch {
-      toast.error('Microphone access denied')
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      toast.error(msg.includes('Permission') || msg.includes('denied') ? 'Microphone access denied' : `Recording error: ${msg}`)
     }
   }
 
@@ -198,19 +207,29 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
     if (!mr) return
     setIsRecording(false)
     setRecordingUploading(true)
+    // Stop recorder first, then tracks — ensures all chunks are flushed before onstop fires
     await new Promise<void>(resolve => {
-      mr.onstop = () => resolve()
+      mr.onstop = () => {
+        mr.stream.getTracks().forEach(t => t.stop())
+        resolve()
+      }
       mr.stop()
-      mr.stream.getTracks().forEach(t => t.stop())
     })
     const durationSeconds = Math.round((Date.now() - recordingStartRef.current) / 1000)
-    const blob = new Blob(chunksRef.current, { type: mr.mimeType })
+    const mimeType = mr.mimeType || 'audio/webm'
+    const ext = mimeType.includes('mp4') ? 'mp4' : mimeType.includes('ogg') ? 'ogg' : 'webm'
+    const blob = new Blob(chunksRef.current, { type: mimeType })
     chunksRef.current = []
     mediaRecorderRef.current = null
+    if (blob.size === 0) {
+      toast.error('Recording was empty — try again')
+      setRecordingUploading(false)
+      return
+    }
     try {
       const form = new FormData()
-      form.append('audio', blob, 'recording.webm')
-      form.append('mime_type', mr.mimeType)
+      form.append('audio', blob, `recording.${ext}`)
+      form.append('mime_type', mimeType)
       form.append('duration_seconds', String(durationSeconds))
       if (company) {
         form.append('company_id', company.id)
