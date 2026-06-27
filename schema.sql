@@ -58,13 +58,16 @@ CREATE TABLE call_recordings (
   called_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Live caller presence: tracks who is online and which company they're viewing.
--- Rows expire naturally after 5 minutes of inactivity (filtered in queries).
-CREATE TABLE IF NOT EXISTS caller_sessions (
-  caller_name  TEXT PRIMARY KEY,
-  company_id   UUID,
+-- Live company locks so two callers never work the same lead.
+-- Keyed by company_id (PRIMARY KEY) so Postgres serializes concurrent claims
+-- on the same company — the loser is rejected by the ON CONFLICT WHERE clause.
+-- A claim is "active" while claimed_at is within ~90s; the client heartbeats
+-- every 12s, and a dropped tab's lock frees automatically once it goes stale.
+CREATE TABLE IF NOT EXISTS company_claims (
+  company_id   UUID PRIMARY KEY,
+  caller_name  TEXT NOT NULL,
   company_name TEXT,
-  updated_at   TIMESTAMPTZ DEFAULT NOW()
+  claimed_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE number_locks (
