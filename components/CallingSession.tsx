@@ -420,10 +420,19 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
               <button onClick={() => setSessionCaller('')} className="ml-2 text-gray-600 hover:text-gray-400 text-xs underline">change</button>
             </span>
             <div className="flex items-center gap-3">
+              {/* Online count badge */}
+              {(() => {
+                const total = 1 + otherSessions.length
+                return (
+                  <span className="flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full bg-emerald-900/40 border border-emerald-800/60 text-emerald-400">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    {total} online
+                  </span>
+                )
+              })()}
               {otherSessions.map(s => (
-                <span key={s.caller_name} className="flex items-center gap-1.5 text-xs text-emerald-400">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  {s.caller_name}{s.company_name ? ` → ${s.company_name}` : ' online'}
+                <span key={s.caller_name} className="hidden sm:flex items-center gap-1 text-xs text-gray-500">
+                  {s.caller_name}{s.company_name ? ` → ${s.company_name}` : ''}
                 </span>
               ))}
               <span className="text-sm text-gray-500">{index + 1} / {queue.length}</span>
