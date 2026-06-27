@@ -134,6 +134,14 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
   const [showHistory, setShowHistory] = useState(false)
   const [loadingHistory, setLoadingHistory] = useState(false)
 
+  // Recording
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const chunksRef = useRef<Blob[]>([])
+  const recordingStartRef = useRef<number>(0)
+  const [isRecording, setIsRecording] = useState(false)
+  const [recordingUploading, setRecordingUploading] = useState(false)
+  const [lastRecordingId, setLastRecordingId] = useState<string | null>(null)
+
   const company = queue[index]
 
   const loadCompany = useCallback((c: Company) => {
@@ -165,6 +173,60 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
     let i = from
     while (i < q.length && calledIdsRef.current.has(q[i].id)) i++
     return i < q.length ? i : -1
+  }
+
+  async function startRecording() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : 'audio/webm'
+      const mr = new MediaRecorder(stream, { mimeType })
+      chunksRef.current = []
+      mr.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data) }
+      mr.start(1000)
+      mediaRecorderRef.current = mr
+      recordingStartRef.current = Date.now()
+      setIsRecording(true)
+    } catch {
+      toast.error('Microphone access denied')
+    }
+  }
+
+  async function stopRecording() {
+    const mr = mediaRecorderRef.current
+    if (!mr) return
+    setIsRecording(false)
+    setRecordingUploading(true)
+    await new Promise<void>(resolve => {
+      mr.onstop = () => resolve()
+      mr.stop()
+      mr.stream.getTracks().forEach(t => t.stop())
+    })
+    const durationSeconds = Math.round((Date.now() - recordingStartRef.current) / 1000)
+    const blob = new Blob(chunksRef.current, { type: mr.mimeType })
+    chunksRef.current = []
+    mediaRecorderRef.current = null
+    try {
+      const form = new FormData()
+      form.append('audio', blob, 'recording.webm')
+      form.append('mime_type', mr.mimeType)
+      form.append('duration_seconds', String(durationSeconds))
+      if (company) {
+        form.append('company_id', company.id)
+        form.append('company_name', company.company_name)
+      }
+      if (sessionCaller) form.append('caller_name', sessionCaller)
+      const res = await fetch('/api/recordings', { method: 'POST', body: form })
+      if (!res.ok) throw new Error('Upload failed')
+      const { id } = await res.json()
+      setLastRecordingId(id)
+      toast.success('Recording saved')
+    } catch {
+      toast.error('Failed to save recording')
+    } finally {
+      setRecordingUploading(false)
+    }
   }
 
   async function handleNext(skip = false) {
@@ -210,6 +272,7 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
         toast.success('Saved')
         setSaving(false)
         setIndex(next)
+        setLastRecordingId(null)
         loadCompany(filtered[next])
         return
       }
@@ -331,6 +394,44 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
                 <input value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)}
                   placeholder="Edit phone…"
                   className="mt-2 w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500" />
+
+                {/* Record button */}
+                <div className="mt-3 flex items-center gap-2">
+                  {isRecording ? (
+                    <button
+                      onClick={stopRecording}
+                      className="flex items-center gap-2 px-3 py-2 bg-red-900/40 border border-red-700 hover:bg-red-900/60 text-red-300 text-sm rounded-lg transition-colors"
+                    >
+                      <span className="w-2 h-2 rounded-full bg-red-400 animate-pulse" />
+                      Stop recording
+                    </button>
+                  ) : recordingUploading ? (
+                    <span className="text-xs text-gray-500 flex items-center gap-1.5">
+                      <span className="w-3 h-3 border border-gray-500 border-t-gray-300 rounded-full animate-spin" />
+                      Saving recording…
+                    </span>
+                  ) : lastRecordingId ? (
+                    <a
+                      href="/recordings"
+                      className="flex items-center gap-1.5 text-xs text-green-400 hover:text-green-300 transition-colors"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      Recording saved · View
+                    </a>
+                  ) : (
+                    <button
+                      onClick={startRecording}
+                      className="flex items-center gap-2 px-3 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 text-sm rounded-lg transition-colors"
+                    >
+                      <svg className="w-3.5 h-3.5 text-red-400" fill="currentColor" viewBox="0 0 24 24">
+                        <circle cx="12" cy="12" r="6" />
+                      </svg>
+                      Record call
+                    </button>
+                  )}
+                </div>
               </Field>
             </div>
 

@@ -48,6 +48,9 @@ CREATE TABLE call_recordings (
   company_id UUID REFERENCES companies(id) ON DELETE SET NULL,
   call_sid TEXT,
   recording_url TEXT,
+  recording_data BYTEA,         -- raw audio captured from device mic (webm/opus)
+  mime_type TEXT,               -- e.g. 'audio/webm;codecs=opus'
+  company_name_snapshot TEXT,   -- denormalised name at time of recording
   duration_seconds INTEGER,
   called_by TEXT,
   caller_name TEXT,
