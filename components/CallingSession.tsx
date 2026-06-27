@@ -117,50 +117,56 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
     else localStorage.removeItem('sessionCaller')
   }
 
-  // Register own session whenever caller or current company changes
+  // Refs tracking the live queue/index so the polling heartbeat can read the
+  // current company without re-subscribing the interval on every advance.
+  const queueRef = useRef(queue)
+  const indexRef = useRef(index)
+  useEffect(() => { queueRef.current = queue }, [queue])
+  useEffect(() => { indexRef.current = index }, [index])
+
   const sessionCallerRef = useRef(sessionCaller)
   useEffect(() => { sessionCallerRef.current = sessionCaller }, [sessionCaller])
 
+  // Release our session on unmount / tab close so we don't block the other caller
   useEffect(() => {
-    const current = queue[index]
-    if (!sessionCaller || !current) return
-    fetch('/api/session', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ caller_name: sessionCaller, company_id: current.id, company_name: current.company_name }),
-    }).catch(() => {})
-  }, [sessionCaller, queue, index])
-
-  // Clean up session on unmount
-  useEffect(() => {
-    return () => {
+    const release = () => {
       const caller = sessionCallerRef.current
-      if (caller) {
-        fetch('/api/session', {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ caller_name: caller }),
-        }).catch(() => {})
-      }
+      if (!caller) return
+      fetch('/api/session', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ caller_name: caller }),
+        keepalive: true,
+      }).catch(() => {})
     }
+    window.addEventListener('beforeunload', release)
+    return () => { window.removeEventListener('beforeunload', release); release() }
   }, [])
 
-  // Poll for other callers' sessions every 12 seconds
+  // Every 12s: heartbeat our current claim (so it never expires mid-call) and
+  // refresh the list of who else is online + which companies they hold.
   useEffect(() => {
     if (!sessionCaller) return
-    const poll = async () => {
+    const tick = async () => {
+      const current = queueRef.current[indexRef.current]
+      if (current) {
+        fetch('/api/session', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ caller_name: sessionCaller, company_id: current.id, company_name: current.company_name }),
+        }).catch(() => {})
+      }
       try {
         const res = await fetch('/api/session')
         if (!res.ok) return
         const sessions: CallerSession[] = await res.json()
         const others = sessions.filter(s => s.caller_name !== sessionCaller)
         setOtherSessions(others)
-        const locked = new Set(others.map(s => s.company_id).filter(Boolean) as string[])
-        claimedByOthers.current = locked
+        claimedByOthers.current = new Set(others.map(s => s.company_id).filter(Boolean) as string[])
       } catch { /* network glitch — keep last state */ }
     }
-    poll()
-    const id = setInterval(poll, 12000)
+    tick()
+    const id = setInterval(tick, 12000)
     return () => clearInterval(id)
   }, [sessionCaller])
 
@@ -220,6 +226,57 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
   }, [])
 
   useState(() => { if (queue[0]) loadCompany(queue[0]) })
+
+  // Atomically claim a company for this caller. Returns true if we got it,
+  // false if another active caller already holds it. Fails OPEN (returns true)
+  // if there's no caller selected or the presence API is unreachable, so a
+  // presence outage never blocks calling.
+  const claimCompany = useCallback(async (c: Company): Promise<boolean> => {
+    const caller = sessionCallerRef.current
+    if (!caller) return true
+    try {
+      const res = await fetch('/api/session', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ caller_name: caller, company_id: c.id, company_name: c.company_name }),
+      })
+      if (!res.ok) return true
+      const data = await res.json()
+      return data.claimed !== false
+    } catch {
+      return true
+    }
+  }, [])
+
+  // Walk forward from `fromIndex`, claiming the first company that isn't already
+  // called by us or held by the other caller. Returns its index, or -1.
+  const claimForward = useCallback(async (q: Company[], fromIndex: number): Promise<number> => {
+    let i = fromIndex
+    while (i < q.length) {
+      const c = q[i]
+      if (calledIdsRef.current.has(c.id)) { i++; continue }
+      const ok = await claimCompany(c)
+      if (ok) return i
+      claimedByOthers.current.add(c.id) // taken — remember and move on
+      i++
+    }
+    return -1
+  }, [claimCompany])
+
+  // When a caller is selected, make sure the company on screen is actually ours.
+  // If the other caller already holds it (e.g. both opened on the same top lead),
+  // jump forward to the first free one.
+  useEffect(() => {
+    if (!sessionCaller) return
+    let cancelled = false
+    ;(async () => {
+      const i = await claimForward(queueRef.current, indexRef.current)
+      if (cancelled) return
+      if (i === -1) { setDone(true); return }
+      if (i !== indexRef.current) { setIndex(i); loadCompany(queueRef.current[i]) }
+    })()
+    return () => { cancelled = true }
+  }, [sessionCaller, claimForward, loadCompany])
 
   function findNextUncalled(from: number, q: Company[]): number {
     let i = from
@@ -338,7 +395,7 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
         calledIdsRef.current.add(updated.id)
         const filtered = queue.filter(c => !calledIdsRef.current.has(c.id))
         setQueue(filtered)
-        const next = findNextUncalled(0, filtered)
+        const next = await claimForward(filtered, 0)
         if (next === -1) { toast.success('Saved'); setSaving(false); setDone(true); return }
         toast.success('Saved')
         setSaving(false)
@@ -355,7 +412,7 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
     } finally {
       setSaving(false)
     }
-    const next = findNextUncalled(index + 1, queue)
+    const next = await claimForward(queue, index + 1)
     if (next === -1) setDone(true)
     else { setIndex(next); loadCompany(queue[next]) }
   }
