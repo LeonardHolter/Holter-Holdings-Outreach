@@ -227,41 +227,53 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
 
   useState(() => { if (queue[0]) loadCompany(queue[0]) })
 
-  // Atomically claim a company for this caller. Returns true if we got it,
-  // false if another active caller already holds it. Fails OPEN (returns true)
-  // if there's no caller selected or the presence API is unreachable, so a
-  // presence outage never blocks calling.
-  const claimCompany = useCallback(async (c: Company): Promise<boolean> => {
-    const caller = sessionCallerRef.current
-    if (!caller) return true
-    try {
-      const res = await fetch('/api/session', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ caller_name: caller, company_id: c.id, company_name: c.company_name }),
-      })
-      if (!res.ok) return true
-      const data = await res.json()
-      return data.claimed !== false
-    } catch {
-      return true
-    }
+  // Server-authoritative "give me my next free lead".
+  //
+  // We hand the server our ordered, not-yet-called candidate ids and it
+  // atomically claims (and returns) the FIRST one no other caller holds — the
+  // whole pick-and-lock loop happens in one request, so two callers can never
+  // be handed the same company. Returns the index of the claimed company in `q`,
+  // or -1 if the queue is exhausted.
+  const firstUncalled = useCallback((q: Company[], from: number): number => {
+    for (let i = from; i < q.length; i++) if (!calledIdsRef.current.has(q[i].id)) return i
+    return -1
   }, [])
 
-  // Walk forward from `fromIndex`, claiming the first company that isn't already
-  // called by us or held by the other caller. Returns its index, or -1.
   const claimForward = useCallback(async (q: Company[], fromIndex: number): Promise<number> => {
-    let i = fromIndex
-    while (i < q.length) {
-      const c = q[i]
-      if (calledIdsRef.current.has(c.id)) { i++; continue }
-      const ok = await claimCompany(c)
-      if (ok) return i
-      claimedByOthers.current.add(c.id) // taken — remember and move on
-      i++
+    const caller = sessionCallerRef.current
+    // No caller selected yet — just take the next uncalled locally.
+    if (!caller) return firstUncalled(q, fromIndex)
+
+    // Build the ordered candidate window (next 100 uncalled companies).
+    const candidate_ids: string[] = []
+    for (let i = fromIndex; i < q.length && candidate_ids.length < 100; i++) {
+      if (!calledIdsRef.current.has(q[i].id)) candidate_ids.push(q[i].id)
     }
-    return -1
-  }, [claimCompany])
+    if (candidate_ids.length === 0) return -1
+
+    try {
+      const res = await fetch('/api/session/claim-next', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ caller_name: caller, candidate_ids }),
+      })
+      if (!res.ok) throw new Error('claim-next failed')
+      const { company_id } = await res.json()
+      if (!company_id) return -1 // everything in the window is taken
+      const idx = q.findIndex(c => c.id === company_id)
+      // Mark anything ahead of the winner as held by others (for "up next").
+      for (const id of candidate_ids) {
+        if (id === company_id) break
+        claimedByOthers.current.add(id)
+      }
+      return idx !== -1 ? idx : firstUncalled(q, fromIndex)
+    } catch {
+      // Overlap service unreachable: don't silently double-call — warn and fall
+      // back to the next uncalled lead so calling still works.
+      toast.error('Overlap check unavailable — coordinate manually')
+      return firstUncalled(q, fromIndex)
+    }
+  }, [firstUncalled])
 
   // When a caller is selected, make sure the company on screen is actually ours.
   // If the other caller already holds it (e.g. both opened on the same top lead),
