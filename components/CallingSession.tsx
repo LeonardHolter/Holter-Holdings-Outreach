@@ -117,6 +117,53 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
     else localStorage.removeItem('sessionCaller')
   }
 
+  // Register own session whenever caller or current company changes
+  const sessionCallerRef = useRef(sessionCaller)
+  useEffect(() => { sessionCallerRef.current = sessionCaller }, [sessionCaller])
+
+  useEffect(() => {
+    const current = queue[index]
+    if (!sessionCaller || !current) return
+    fetch('/api/session', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ caller_name: sessionCaller, company_id: current.id, company_name: current.company_name }),
+    }).catch(() => {})
+  }, [sessionCaller, queue, index])
+
+  // Clean up session on unmount
+  useEffect(() => {
+    return () => {
+      const caller = sessionCallerRef.current
+      if (caller) {
+        fetch('/api/session', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ caller_name: caller }),
+        }).catch(() => {})
+      }
+    }
+  }, [])
+
+  // Poll for other callers' sessions every 12 seconds
+  useEffect(() => {
+    if (!sessionCaller) return
+    const poll = async () => {
+      try {
+        const res = await fetch('/api/session')
+        if (!res.ok) return
+        const sessions: CallerSession[] = await res.json()
+        const others = sessions.filter(s => s.caller_name !== sessionCaller)
+        setOtherSessions(others)
+        const locked = new Set(others.map(s => s.company_id).filter(Boolean) as string[])
+        claimedByOthers.current = locked
+      } catch { /* network glitch — keep last state */ }
+    }
+    poll()
+    const id = setInterval(poll, 12000)
+    return () => clearInterval(id)
+  }, [sessionCaller])
+
   // Editable fields
   const [response, setResponse] = useState('')
   const [notes, setNotes] = useState('')
@@ -133,6 +180,11 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
   const [noteHistory, setNoteHistory] = useState<CompanyNote[]>([])
   const [showHistory, setShowHistory] = useState(false)
   const [loadingHistory, setLoadingHistory] = useState(false)
+
+  // Presence — who else is live and which company they're viewing
+  interface CallerSession { caller_name: string; company_id: string | null; company_name: string | null }
+  const [otherSessions, setOtherSessions] = useState<CallerSession[]>([])
+  const claimedByOthers = useRef<Set<string>>(new Set())
 
   // Recording
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -171,7 +223,7 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
 
   function findNextUncalled(from: number, q: Company[]): number {
     let i = from
-    while (i < q.length && calledIdsRef.current.has(q[i].id)) i++
+    while (i < q.length && (calledIdsRef.current.has(q[i].id) || claimedByOthers.current.has(q[i].id))) i++
     return i < q.length ? i : -1
   }
 
@@ -362,12 +414,20 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
             </select>
           </div>
         ) : (
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
             <span className="text-sm text-gray-500">
               Logging as <span className="text-gray-300 font-medium">{sessionCaller}</span>
               <button onClick={() => setSessionCaller('')} className="ml-2 text-gray-600 hover:text-gray-400 text-xs underline">change</button>
             </span>
-            <span className="text-sm text-gray-500">{index + 1} / {queue.length}</span>
+            <div className="flex items-center gap-3">
+              {otherSessions.map(s => (
+                <span key={s.caller_name} className="flex items-center gap-1.5 text-xs text-emerald-400">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  {s.caller_name}{s.company_name ? ` → ${s.company_name}` : ' online'}
+                </span>
+              ))}
+              <span className="text-sm text-gray-500">{index + 1} / {queue.length}</span>
+            </div>
           </div>
         )}
 

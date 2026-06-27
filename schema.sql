@@ -58,6 +58,15 @@ CREATE TABLE call_recordings (
   called_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Live caller presence: tracks who is online and which company they're viewing.
+-- Rows expire naturally after 5 minutes of inactivity (filtered in queries).
+CREATE TABLE IF NOT EXISTS caller_sessions (
+  caller_name  TEXT PRIMARY KEY,
+  company_id   UUID,
+  company_name TEXT,
+  updated_at   TIMESTAMPTZ DEFAULT NOW()
+);
+
 CREATE TABLE number_locks (
   number TEXT PRIMARY KEY,
   caller_name TEXT NOT NULL,
