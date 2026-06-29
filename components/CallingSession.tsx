@@ -302,7 +302,10 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
       return
     }
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      // Mono mic with echo cancellation — fine for voice and keeps files small.
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
+      })
       // Pick the best supported format — Safari needs mp4, Chrome/Firefox use webm
       const mimeType = [
         'audio/webm;codecs=opus',
@@ -310,7 +313,12 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
         'audio/mp4',
         'audio/ogg;codecs=opus',
       ].find(t => MediaRecorder.isTypeSupported(t)) ?? ''
-      const mr = new MediaRecorder(stream, mimeType ? { mimeType } : undefined)
+      // 24 kbps mono is clearly intelligible for voice and stays well under the
+      // upload size limit (~0.18 MB/min → a 20-min call is ~3.5 MB).
+      const mr = new MediaRecorder(stream, {
+        ...(mimeType ? { mimeType } : {}),
+        audioBitsPerSecond: 24000,
+      })
       chunksRef.current = []
       mr.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data) }
       mr.start(1000)
@@ -347,6 +355,13 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
       setRecordingUploading(false)
       return
     }
+    // Hard platform limit on the upload body is ~4.5 MB; refuse cleanly above 4 MB
+    // rather than failing mid-upload (≈22 min at 24 kbps).
+    if (blob.size > 4 * 1024 * 1024) {
+      toast.error(`Recording too long to save (${(blob.size / 1024 / 1024).toFixed(1)} MB). Keep calls under ~20 min.`)
+      setRecordingUploading(false)
+      return
+    }
     try {
       const form = new FormData()
       form.append('audio', blob, `recording.${ext}`)
@@ -358,12 +373,16 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
       }
       if (sessionCaller) form.append('caller_name', sessionCaller)
       const res = await fetch('/api/recordings', { method: 'POST', body: form })
-      if (!res.ok) throw new Error('Upload failed')
+      if (!res.ok) {
+        const detail = await res.text().catch(() => '')
+        throw new Error(`HTTP ${res.status}${detail ? ` — ${detail.slice(0, 120)}` : ''}`)
+      }
       const { id } = await res.json()
       setLastRecordingId(id)
       toast.success('Recording saved')
-    } catch {
-      toast.error('Failed to save recording')
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'unknown error'
+      toast.error(`Failed to save recording: ${msg}`)
     } finally {
       setRecordingUploading(false)
     }
