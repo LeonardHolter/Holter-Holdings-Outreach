@@ -93,6 +93,7 @@ export const RESPONSE_STATUSES = [
   'No answer',
   'Call back later',
   'Wrong number',
+  'Not needed',
 ]
 
 export const TEAM_MEMBERS = [

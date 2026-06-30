@@ -1,4 +1,9 @@
-import { Pool } from '@neondatabase/serverless'
+import { Pool, types } from '@neondatabase/serverless'
+
+// Return DATE columns (OID 1082) as plain 'YYYY-MM-DD' strings instead of JS
+// Date objects. The default Date parsing both breaks date-fns' parseISO (which
+// expects a string) and shifts date-only values across timezones (off-by-one).
+types.setTypeParser(1082, (v: string) => v)
 
 let pool: Pool | null = null
 

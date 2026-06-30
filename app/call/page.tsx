@@ -20,7 +20,7 @@ async function fetchQueue(): Promise<Company[]> {
       `SELECT * FROM companies
        WHERE reach_out_response IS NOT NULL
          AND reach_out_response != 'Not called'
-         AND reach_out_response NOT IN ('Not interested', 'Demo booked', 'Wrong number')
+         AND reach_out_response NOT IN ('Not interested', 'Demo booked', 'Wrong number', 'Not needed')
          AND (next_reach_out <= $1 OR next_reach_out IS NULL)
        ORDER BY next_reach_out ASC NULLS FIRST
        LIMIT 2000`,
@@ -62,6 +62,7 @@ export default async function CallPage({ searchParams }: { searchParams: Promise
     'Not interested',
     'Demo booked',
     'Wrong number',
+    'Not needed',
   ])
 
   let finalQueue = queue

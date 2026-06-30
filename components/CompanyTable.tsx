@@ -51,7 +51,9 @@ async function createCompanyReq(payload: Partial<Company>): Promise<Company> {
 export function CompanyTable({ initialData }: Props) {
   const router = useRouter()
   const [data, setData] = useState<Company[]>(initialData)
-  const [sorting, setSorting] = useState<SortingState>([{ id: 'created_at', desc: true }])
+  // Rows arrive already ordered by lead priority from the server; no default
+  // client sort (and 'created_at' isn't a column, which would crash the table).
+  const [sorting, setSorting] = useState<SortingState>([])
   const [newRow, setNewRow] = useState<Partial<Company> | null>(null)
   const [newCompanyName, setNewCompanyName] = useState('')
   const [newNameError, setNewNameError] = useState(false)
