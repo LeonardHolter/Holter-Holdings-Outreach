@@ -53,14 +53,21 @@ function computeStreak(map: Map<string, DayData>): number {
   return streak
 }
 
-// Color for a cell based on call count
-function cellColor(count: number, isToday: boolean): string {
-  if (isToday && count === 0) return 'bg-gray-800 ring-1 ring-gray-600'
-  if (count === 0) return 'bg-gray-900'
-  if (count >= GOAL) return 'bg-green-500'
-  if (count >= 50) return 'bg-green-700'
-  if (count >= 25) return 'bg-green-900'
-  return 'bg-green-950'
+const LEONARD_COLOR = '#22c55e' // green
+const WILLIAM_COLOR = '#eab308' // yellow
+
+// Background for a day cell, coloured by who called:
+//   green = Leonard, yellow = William, diagonal split = both, gray = nobody.
+function cellBackground(d: DayData | undefined): string | undefined {
+  if (!d || d.total === 0) return undefined
+  const leonard = d.leonard > 0
+  const william = d.william > 0
+  if (leonard && william) {
+    return `linear-gradient(135deg, ${LEONARD_COLOR} 0 50%, ${WILLIAM_COLOR} 50% 100%)`
+  }
+  if (leonard) return LEONARD_COLOR
+  if (william) return WILLIAM_COLOR
+  return '#4b5563' // calls with no caller recorded — neutral gray
 }
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
@@ -236,12 +243,18 @@ export function DailyStats({ data }: Props) {
                     const d = map.get(dateStr)
                     const count = d?.total ?? 0
                     const isToday = dateStr === todayStr
-                    const label = `${dateStr}: ${count} call${count !== 1 ? 's' : ''}${count >= GOAL ? ' ✓' : ''}`
+                    const bg = cellBackground(d)
+                    const label = d
+                      ? `${dateStr}: Leonard ${d.leonard}, William ${d.william} (${count} total)`
+                      : `${dateStr}: no calls`
                     return (
                       <div
                         key={dateStr}
                         title={label}
-                        className={`w-3 h-3 rounded-sm cursor-default transition-opacity hover:opacity-75 ${cellColor(count, isToday)}`}
+                        className={`w-3 h-3 rounded-sm cursor-default transition-opacity hover:opacity-75 ${
+                          bg ? '' : isToday ? 'bg-gray-800 ring-1 ring-gray-600' : 'bg-gray-900'
+                        }`}
+                        style={bg ? { background: bg } : undefined}
                       />
                     )
                   })}
@@ -252,14 +265,23 @@ export function DailyStats({ data }: Props) {
         </div>
 
         {/* Legend */}
-        <div className="flex items-center gap-2 mt-4 text-[10px] text-gray-600">
-          <span>Less</span>
-          <div className="w-3 h-3 rounded-sm bg-gray-900 border border-gray-700" />
-          <div className="w-3 h-3 rounded-sm bg-green-950" />
-          <div className="w-3 h-3 rounded-sm bg-green-900" />
-          <div className="w-3 h-3 rounded-sm bg-green-700" />
-          <div className="w-3 h-3 rounded-sm bg-green-500" />
-          <span>100+ ✓</span>
+        <div className="flex items-center gap-4 mt-4 text-[10px] text-gray-500">
+          <span className="flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded-sm" style={{ background: LEONARD_COLOR }} />
+            Leonard
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded-sm" style={{ background: WILLIAM_COLOR }} />
+            William
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded-sm" style={{ background: `linear-gradient(135deg, ${LEONARD_COLOR} 0 50%, ${WILLIAM_COLOR} 50% 100%)` }} />
+            Both
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded-sm bg-gray-900 border border-gray-700" />
+            No calls
+          </span>
         </div>
       </div>
     </div>
