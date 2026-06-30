@@ -199,8 +199,28 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
   const [isRecording, setIsRecording] = useState(false)
   const [recordingUploading, setRecordingUploading] = useState(false)
   const [lastRecordingId, setLastRecordingId] = useState<string | null>(null)
+  const [autoRecord, setAutoRecordState] = useState(false)
+
+  useEffect(() => {
+    setAutoRecordState(localStorage.getItem('autoRecord') === '1')
+  }, [])
+
+  function setAutoRecord(on: boolean) {
+    setAutoRecordState(on)
+    localStorage.setItem('autoRecord', on ? '1' : '0')
+  }
 
   const company = queue[index]
+
+  // Auto-record: when enabled, start a recording each time we land on a new
+  // company (stops + saves when an outcome is chosen, or on advance). Only fires
+  // on company change / toggle-on; never restarts on the same company.
+  useEffect(() => {
+    if (!autoRecord || !sessionCaller || !company) return
+    if (mediaRecorderRef.current) return // already recording
+    startRecording()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoRecord, sessionCaller, company?.id])
 
   const loadCompany = useCallback((c: Company) => {
     setResponse(c.reach_out_response ?? '')
@@ -390,6 +410,9 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
 
   async function handleNext(skip = false) {
     if (!company) return
+    // Safety net for auto-record: if a recording is still running (e.g. Skip
+    // without choosing an outcome), stop + save it before leaving the company.
+    if (mediaRecorderRef.current) await stopRecording()
     setSaving(true)
     try {
       const payload: Partial<Company> = {
@@ -571,8 +594,8 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
                   placeholder="Edit phone…"
                   className="mt-2 w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500" />
 
-                {/* Record button */}
-                <div className="mt-3 flex items-center gap-2">
+                {/* Record button + auto-record toggle */}
+                <div className="mt-3 flex items-center gap-3 flex-wrap">
                   {isRecording ? (
                     <button
                       onClick={stopRecording}
@@ -607,6 +630,21 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
                       Record call
                     </button>
                   )}
+
+                  {/* Auto-record toggle */}
+                  <button
+                    type="button"
+                    onClick={() => setAutoRecord(!autoRecord)}
+                    className="flex items-center gap-2 text-xs text-gray-400 hover:text-gray-200 transition-colors ml-auto"
+                    title="Automatically record each call and save it when you pick an outcome"
+                  >
+                    <span
+                      className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${autoRecord ? 'bg-green-600' : 'bg-gray-700'}`}
+                    >
+                      <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${autoRecord ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
+                    </span>
+                    Auto-record
+                  </button>
                 </div>
               </Field>
             </div>
@@ -725,7 +763,7 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
             <Field label="Call Outcome">
               <div className="grid grid-cols-2 gap-2 mt-1">
                 {RESPONSE_STATUSES.map(r => (
-                  <button key={r} onClick={() => setResponse(r)}
+                  <button key={r} onClick={() => { setResponse(r); if (mediaRecorderRef.current) stopRecording() }}
                     className={`text-left px-3 py-2.5 rounded-lg border text-sm transition-colors touch-manipulation ${
                       response === r ? getResponseButtonStyle(r) : 'border-gray-700 bg-gray-800 text-gray-400 hover:border-gray-600 hover:text-gray-300'
                     }`}>{r}</button>
