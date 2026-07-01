@@ -102,3 +102,14 @@ CREATE TABLE incoming_messages (
   status TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Free-form notes the team writes for a whole day (tactics, reflections),
+-- shown on the Stats day-detail panel. Not tied to a company.
+CREATE TABLE IF NOT EXISTS day_notes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  day DATE NOT NULL,
+  note TEXT NOT NULL,
+  caller_name TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS day_notes_day_idx ON day_notes(day);

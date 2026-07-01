@@ -5,11 +5,12 @@ import { format, parseISO } from 'date-fns'
 import type { StatRow } from '@/app/stats/page'
 
 interface DayNote {
+  id?: string
   note: string
   caller_name: string | null
   created_at: string
-  company_name: string | null
-  company_id: string | null
+  company_name?: string | null
+  company_id?: string | null
 }
 
 const GOAL = 100
@@ -76,20 +77,50 @@ type Period = 'today' | 'week' | 'all'
 export function DailyStats({ rows }: { rows: StatRow[] }) {
   const [period, setPeriod] = useState<Period>('today')
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
-  const [notesState, setNotesState] = useState<{ day: string; notes: DayNote[] } | null>(null)
+  const [notesState, setNotesState] = useState<{ day: string; company: DayNote[]; dayNotes: DayNote[] } | null>(null)
+  const [noteDraft, setNoteDraft] = useState('')
+  const [savingNote, setSavingNote] = useState(false)
 
   useEffect(() => {
     if (!selectedDay) return
     let active = true
     fetch(`/api/notes?date=${selectedDay}`)
-      .then(r => (r.ok ? r.json() : []))
-      .then((data: DayNote[]) => { if (active) setNotesState({ day: selectedDay, notes: Array.isArray(data) ? data : [] }) })
-      .catch(() => { if (active) setNotesState({ day: selectedDay, notes: [] }) })
+      .then(r => (r.ok ? r.json() : { company: [], day: [] }))
+      .then(data => { if (active) setNotesState({ day: selectedDay, company: data.company ?? [], dayNotes: data.day ?? [] }) })
+      .catch(() => { if (active) setNotesState({ day: selectedDay, company: [], dayNotes: [] }) })
     return () => { active = false }
   }, [selectedDay])
 
   const loadingNotes = !!selectedDay && notesState?.day !== selectedDay
-  const dayNotes = notesState?.day === selectedDay ? notesState.notes : []
+  const companyNotes = notesState?.day === selectedDay ? notesState.company : []
+  const myDayNotes = notesState?.day === selectedDay ? notesState.dayNotes : []
+
+  async function addDayNote() {
+    const text = noteDraft.trim()
+    if (!selectedDay || !text) return
+    setSavingNote(true)
+    try {
+      const caller = localStorage.getItem('sessionCaller') || null
+      const res = await fetch('/api/notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date: selectedDay, note: text, caller_name: caller }),
+      })
+      if (res.ok) {
+        const saved: DayNote = await res.json()
+        setNotesState(s => (s && s.day === selectedDay ? { ...s, dayNotes: [saved, ...s.dayNotes] } : s))
+        setNoteDraft('')
+      }
+    } finally {
+      setSavingNote(false)
+    }
+  }
+
+  async function deleteDayNote(id?: string) {
+    if (!id) return
+    setNotesState(s => (s ? { ...s, dayNotes: s.dayNotes.filter(n => n.id !== id) } : s))
+    await fetch(`/api/notes?id=${id}`, { method: 'DELETE' }).catch(() => {})
+  }
 
   const { today, weekAgo } = useMemo(() => {
     const t = new Date()
@@ -354,16 +385,52 @@ export function DailyStats({ rows }: { rows: StatRow[] }) {
               })}
             </div>
 
+            {/* Your own note for the day (tactics, reflections, etc.) */}
+            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">My notes for this day</h3>
+            <div className="flex items-start gap-2 mb-3">
+              <textarea
+                value={noteDraft}
+                onChange={e => setNoteDraft(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) addDayNote() }}
+                placeholder="What tactic did you use today? Anything worth remembering…"
+                rows={2}
+                className="flex-1 bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-500 resize-y"
+              />
+              <button
+                onClick={addDayNote}
+                disabled={savingNote || !noteDraft.trim()}
+                className="px-3 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm rounded-lg transition-colors shrink-0"
+              >
+                {savingNote ? 'Saving…' : 'Add'}
+              </button>
+            </div>
+            {myDayNotes.length > 0 && (
+              <div className="space-y-2 mb-5">
+                {myDayNotes.map(n => (
+                  <div key={n.id} className="bg-blue-950/20 border border-blue-900/40 rounded-lg p-3">
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-blue-400">
+                        {n.caller_name ? `${n.caller_name} · ` : ''}{format(parseISO(n.created_at), 'HH:mm')}
+                      </span>
+                      <button onClick={() => deleteDayNote(n.id)} className="text-[10px] text-gray-600 hover:text-red-400 shrink-0">Delete</button>
+                    </div>
+                    <p className="text-sm text-gray-300 whitespace-pre-wrap">{n.note}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Notes attached to companies called this day */}
             <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-              Notes{dayNotes.length ? ` (${dayNotes.length})` : ''}
+              Call notes{companyNotes.length ? ` (${companyNotes.length})` : ''}
             </h3>
             {loadingNotes ? (
               <p className="text-xs text-gray-600">Loading…</p>
-            ) : dayNotes.length === 0 ? (
-              <p className="text-xs text-gray-600">No notes written this day.</p>
+            ) : companyNotes.length === 0 ? (
+              <p className="text-xs text-gray-600">No call notes this day.</p>
             ) : (
               <div className="space-y-2">
-                {dayNotes.map((n, i) => (
+                {companyNotes.map((n, i) => (
                   <div key={i} className="bg-gray-950 border border-gray-800 rounded-lg p-3">
                     <div className="flex items-center justify-between gap-2 mb-1">
                       <span className="text-sm font-medium text-gray-200 truncate">{n.company_name ?? 'Unknown company'}</span>
