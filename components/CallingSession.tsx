@@ -430,7 +430,12 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
         payload.who_called = sessionCaller || null
         payload.last_reach_out = todayStr()
         const newCallCount = (company.amount_of_calls ?? 0) + 1
-        payload.next_reach_out = callbackDate || nextRescheduleDate(company.google_reviews, newCallCount)
+        // "No answer" always comes back in exactly a week; other outcomes use
+        // the value-based reschedule (unless a manual callback date is set).
+        const autoReschedule = response === 'No answer'
+          ? format(new Date(Date.now() + 7 * 86400000), 'yyyy-MM-dd')
+          : nextRescheduleDate(company.google_reviews, newCallCount)
+        payload.next_reach_out = callbackDate || autoReschedule
         payload.amount_of_calls = newCallCount
         if (sessionCaller === 'Leonard') payload.calls_leonard = (company.calls_leonard ?? 0) + 1
         if (sessionCaller === 'William') payload.calls_william = (company.calls_william ?? 0) + 1
