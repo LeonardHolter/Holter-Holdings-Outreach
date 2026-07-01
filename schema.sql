@@ -126,6 +126,7 @@ CREATE TABLE IF NOT EXISTS call_events (
   response TEXT NOT NULL,
   reached_decision_maker BOOLEAN,
   revenue_at_call BIGINT, -- snapshot of the company's revenue tier at call time
+  script TEXT,            -- the script text in use when this call was logged
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS call_events_created_at_idx ON call_events(created_at);

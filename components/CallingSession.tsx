@@ -211,6 +211,22 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
     localStorage.setItem('autoRecord', on ? '1' : '0')
   }
 
+  // Script side panel — the pitch you keep open while calling. Persisted in
+  // localStorage and snapshotted onto every logged call so you can later see
+  // which script wording produced which outcomes.
+  const [script, setScript] = useState('')
+  const [showScript, setShowScript] = useState(false)
+  const scriptRef = useRef('')
+  useEffect(() => {
+    const saved = localStorage.getItem('callScript')
+    if (saved) { setScript(saved); scriptRef.current = saved }
+  }, [])
+  function updateScript(text: string) {
+    setScript(text)
+    scriptRef.current = text
+    localStorage.setItem('callScript', text)
+  }
+
   const company = queue[index]
 
   // Auto-record: when enabled, start a recording each time we land on a new
@@ -467,6 +483,7 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
             response,
             reached_decision_maker: reachedDM,
             revenue_at_call: company.revenue ?? null,
+            script: scriptRef.current || null,
           }),
         }).catch(() => {})
       }
@@ -535,6 +552,45 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
 
   return (
     <div className="flex-1 overflow-y-auto flex flex-col items-center justify-start py-4 sm:py-8 px-3 sm:px-4 pb-safe">
+
+      {/* Script toggle button — fixed to the right edge */}
+      {!showScript && (
+        <button
+          onClick={() => setShowScript(true)}
+          className="fixed right-0 top-24 z-30 flex items-center gap-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 border-r-0 text-gray-300 text-xs font-medium px-3 py-2 rounded-l-lg shadow-lg transition-colors"
+          title="Open your call script"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          Script
+        </button>
+      )}
+
+      {/* Script side panel */}
+      {showScript && (
+        <div className="fixed right-0 top-12 bottom-0 z-30 w-full sm:w-96 bg-gray-900 border-l border-gray-800 shadow-2xl flex flex-col">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800 shrink-0">
+            <div className="flex items-center gap-2">
+              <svg className="w-4 h-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <span className="text-sm font-semibold text-white">Call Script</span>
+            </div>
+            <button onClick={() => setShowScript(false)} className="text-gray-500 hover:text-gray-300 text-sm">Close ✕</button>
+          </div>
+          <textarea
+            value={script}
+            onChange={e => updateScript(e.target.value)}
+            placeholder="Write your pitch here… It stays open while you call and is saved with every logged call so you can see which script wording books demos."
+            className="flex-1 w-full bg-transparent text-sm text-gray-200 placeholder-gray-600 px-4 py-3 resize-none focus:outline-none leading-relaxed"
+          />
+          <p className="text-[10px] text-gray-600 px-4 py-2 border-t border-gray-800 shrink-0">
+            Auto-saved · snapshotted onto each call you log
+          </p>
+        </div>
+      )}
+
       <div className="w-full max-w-2xl space-y-3 sm:space-y-4">
 
         {/* Caller picker */}
