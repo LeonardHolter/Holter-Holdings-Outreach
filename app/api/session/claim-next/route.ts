@@ -33,8 +33,18 @@ export async function POST(req: NextRequest) {
   for (const id of candidate_ids) {
     const rows = await query(
       `INSERT INTO company_claims (company_id, caller_name, company_name, claimed_at)
-       SELECT $1, $2, c.company_name, NOW()
-       FROM companies c WHERE c.id = $1
+       SELECT c.id, $2, c.company_name, NOW()
+       FROM companies c
+       WHERE c.id = $1
+         -- Only hand out a company that is still actually due to be called,
+         -- so a lead someone JUST called can't be re-served after they move on.
+         AND (
+           c.reach_out_response = 'Not called' OR c.reach_out_response IS NULL
+           OR (
+             c.reach_out_response NOT IN ('Not interested', 'Demo booked', 'Wrong number', 'Not needed')
+             AND (c.next_reach_out IS NULL OR c.next_reach_out <= CURRENT_DATE)
+           )
+         )
        ON CONFLICT (company_id) DO UPDATE
          SET caller_name = EXCLUDED.caller_name,
              company_name = EXCLUDED.company_name,
