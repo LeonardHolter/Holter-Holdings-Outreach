@@ -192,10 +192,10 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
   const [otherSessions, setOtherSessions] = useState<CallerSession[]>([])
   const claimedByOthers = useRef<Set<string>>(new Set())
 
-  // Recording
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
-  const chunksRef = useRef<Blob[]>([])
-  const recordingStartRef = useRef<number>(0)
+  // Recording — the whole session lives in one ref so overlapping start/stop
+  // (auto-record + outcome-click + advance) can never mix chunks between two
+  // recordings, which previously dropped the WebM header and corrupted files.
+  const recordingRef = useRef<{ recorder: MediaRecorder; chunks: Blob[]; startedAt: number } | null>(null)
   const [isRecording, setIsRecording] = useState(false)
   const [recordingUploading, setRecordingUploading] = useState(false)
   const [lastRecordingId, setLastRecordingId] = useState<string | null>(null)
@@ -217,7 +217,7 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
   // on company change / toggle-on; never restarts on the same company.
   useEffect(() => {
     if (!autoRecord || !sessionCaller || !company) return
-    if (mediaRecorderRef.current) return // already recording
+    if (recordingRef.current) return // already recording
     startRecording()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoRecord, sessionCaller, company?.id])
@@ -317,6 +317,7 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
   }
 
   async function startRecording() {
+    if (recordingRef.current) return // already recording — never run two at once
     if (!navigator.mediaDevices?.getUserMedia) {
       toast.error('Recording not supported on this browser')
       return
@@ -339,11 +340,11 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
         ...(mimeType ? { mimeType } : {}),
         audioBitsPerSecond: 24000,
       })
-      chunksRef.current = []
-      mr.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data) }
-      mr.start(1000)
-      mediaRecorderRef.current = mr
-      recordingStartRef.current = Date.now()
+      const chunks: Blob[] = []
+      mr.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data) }
+      // No timeslice: one dataavailable at stop() with the complete, valid file.
+      mr.start()
+      recordingRef.current = { recorder: mr, chunks, startedAt: Date.now() }
       setIsRecording(true)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -352,11 +353,13 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
   }
 
   async function stopRecording() {
-    const mr = mediaRecorderRef.current
-    if (!mr) return
+    const session = recordingRef.current
+    if (!session) return
+    recordingRef.current = null // claim it immediately so a double-stop is a no-op
+    const { recorder: mr, chunks, startedAt } = session
     setIsRecording(false)
     setRecordingUploading(true)
-    // Stop recorder first, then tracks — ensures all chunks are flushed before onstop fires
+    // Stop recorder first, then tracks — ensures the final chunk is flushed before onstop.
     await new Promise<void>(resolve => {
       mr.onstop = () => {
         mr.stream.getTracks().forEach(t => t.stop())
@@ -364,12 +367,10 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
       }
       mr.stop()
     })
-    const durationSeconds = Math.round((Date.now() - recordingStartRef.current) / 1000)
+    const durationSeconds = Math.round((Date.now() - startedAt) / 1000)
     const mimeType = mr.mimeType || 'audio/webm'
     const ext = mimeType.includes('mp4') ? 'mp4' : mimeType.includes('ogg') ? 'ogg' : 'webm'
-    const blob = new Blob(chunksRef.current, { type: mimeType })
-    chunksRef.current = []
-    mediaRecorderRef.current = null
+    const blob = new Blob(chunks, { type: mimeType })
     if (blob.size === 0) {
       toast.error('Recording was empty — try again')
       setRecordingUploading(false)
@@ -412,7 +413,7 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
     if (!company) return
     // Safety net for auto-record: if a recording is still running (e.g. Skip
     // without choosing an outcome), stop + save it before leaving the company.
-    if (mediaRecorderRef.current) await stopRecording()
+    if (recordingRef.current) await stopRecording()
     setSaving(true)
     try {
       const payload: Partial<Company> = {
@@ -768,7 +769,7 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
             <Field label="Call Outcome">
               <div className="grid grid-cols-2 gap-2 mt-1">
                 {RESPONSE_STATUSES.map(r => (
-                  <button key={r} onClick={() => { setResponse(r); if (mediaRecorderRef.current) stopRecording() }}
+                  <button key={r} onClick={() => { setResponse(r); if (recordingRef.current) stopRecording() }}
                     className={`text-left px-3 py-2.5 rounded-lg border text-sm transition-colors touch-manipulation ${
                       response === r ? getResponseButtonStyle(r) : 'border-gray-700 bg-gray-800 text-gray-400 hover:border-gray-600 hover:text-gray-300'
                     }`}>{r}</button>
