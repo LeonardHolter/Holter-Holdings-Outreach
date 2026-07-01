@@ -195,8 +195,8 @@ export function DailyStats({ rows }: { rows: StatRow[] }) {
           <span className="text-3xl font-bold tabular-nums text-white">{weekM.calls}</span>
           <span className="text-xs text-gray-600">{pct(weekM.pickupRate)} pickup</span>
         </Kpi>
-        <Kpi label="Pickup rate (all)">
-          <span className="text-3xl font-bold tabular-nums text-blue-400">{pct(allM.pickupRate)}</span>
+        <Kpi label="Not interested (all)">
+          <span className="text-3xl font-bold tabular-nums text-red-400">{pct(allM.notInterestedRate)}</span>
           <span className="text-xs text-gray-600">{allM.demos} demos booked</span>
         </Kpi>
       </div>
