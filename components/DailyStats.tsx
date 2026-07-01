@@ -27,6 +27,7 @@ interface Metrics {
   notNeeded: number
   pickupRate: number
   demoRate: number
+  notInterestedRate: number
 }
 
 function aggregate(rows: StatRow[]): Metrics {
@@ -43,6 +44,7 @@ function aggregate(rows: StatRow[]): Metrics {
     calls, answered, noAnswer, demos, notInterested, callback, wrong, notNeeded,
     pickupRate: calls ? answered / calls : 0,
     demoRate: calls ? demos / calls : 0,
+    notInterestedRate: calls ? notInterested / calls : 0,
   }
 }
 
@@ -190,7 +192,7 @@ export function DailyStats({ rows }: { rows: StatRow[] }) {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-sm min-w-[560px]">
+          <table className="w-full text-sm min-w-[640px]">
             <thead>
               <tr className="text-xs text-gray-500 uppercase tracking-wider border-b border-gray-800">
                 <th className="text-left font-semibold py-2 pr-3">Caller</th>
@@ -200,6 +202,7 @@ export function DailyStats({ rows }: { rows: StatRow[] }) {
                 <th className="text-right font-semibold py-2 px-3">Demo&nbsp;%</th>
                 <th className="text-right font-semibold py-2 px-3">No&nbsp;answer</th>
                 <th className="text-right font-semibold py-2 px-3">Not&nbsp;int.</th>
+                <th className="text-right font-semibold py-2 px-3">Not&nbsp;int.&nbsp;%</th>
                 <th className="text-right font-semibold py-2 pl-3">Callbacks</th>
               </tr>
             </thead>
@@ -220,6 +223,7 @@ export function DailyStats({ rows }: { rows: StatRow[] }) {
                     <td className="text-right tabular-nums text-gray-300 py-2.5 px-3">{m.calls ? pct(m.demoRate) : '—'}</td>
                     <td className="text-right tabular-nums text-gray-500 py-2.5 px-3">{m.noAnswer}</td>
                     <td className="text-right tabular-nums text-gray-500 py-2.5 px-3">{m.notInterested}</td>
+                    <td className="text-right tabular-nums text-red-400/80 py-2.5 px-3">{m.calls ? pct(m.notInterestedRate) : '—'}</td>
                     <td className="text-right tabular-nums text-gray-500 py-2.5 pl-3">{m.callback}</td>
                   </tr>
                 )
@@ -235,6 +239,7 @@ export function DailyStats({ rows }: { rows: StatRow[] }) {
                     <td className="text-right tabular-nums text-gray-200 py-2.5 px-3">{m.calls ? pct(m.demoRate) : '—'}</td>
                     <td className="text-right tabular-nums text-gray-500 py-2.5 px-3">{m.noAnswer}</td>
                     <td className="text-right tabular-nums text-gray-500 py-2.5 px-3">{m.notInterested}</td>
+                    <td className="text-right tabular-nums text-red-400/80 py-2.5 px-3">{m.calls ? pct(m.notInterestedRate) : '—'}</td>
                     <td className="text-right tabular-nums text-gray-500 py-2.5 pl-3">{m.callback}</td>
                   </tr>
                 )
