@@ -1,7 +1,16 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { format, parseISO } from 'date-fns'
 import type { StatRow } from '@/app/stats/page'
+
+interface DayNote {
+  note: string
+  caller_name: string | null
+  created_at: string
+  company_name: string | null
+  company_id: string | null
+}
 
 const GOAL = 100
 const LEONARD_COLOR = '#22c55e' // green
@@ -66,6 +75,21 @@ type Period = 'today' | 'week' | 'all'
 
 export function DailyStats({ rows }: { rows: StatRow[] }) {
   const [period, setPeriod] = useState<Period>('today')
+  const [selectedDay, setSelectedDay] = useState<string | null>(null)
+  const [notesState, setNotesState] = useState<{ day: string; notes: DayNote[] } | null>(null)
+
+  useEffect(() => {
+    if (!selectedDay) return
+    let active = true
+    fetch(`/api/notes?date=${selectedDay}`)
+      .then(r => (r.ok ? r.json() : []))
+      .then((data: DayNote[]) => { if (active) setNotesState({ day: selectedDay, notes: Array.isArray(data) ? data : [] }) })
+      .catch(() => { if (active) setNotesState({ day: selectedDay, notes: [] }) })
+    return () => { active = false }
+  }, [selectedDay])
+
+  const loadingNotes = !!selectedDay && notesState?.day !== selectedDay
+  const dayNotes = notesState?.day === selectedDay ? notesState.notes : []
 
   const { today, weekAgo } = useMemo(() => {
     const t = new Date()
@@ -276,9 +300,11 @@ export function DailyStats({ rows }: { rows: StatRow[] }) {
                     const isToday = dateStr === today
                     const bg = cellBackground(d)
                     const label = d ? `${dateStr}: Leonard ${d.leonard}, William ${d.william} (${d.total} total)` : `${dateStr}: no calls`
+                    const selected = dateStr === selectedDay
                     return (
-                      <div key={dateStr} title={label}
-                        className={`w-3 h-3 rounded-sm cursor-default transition-opacity hover:opacity-75 ${bg ? '' : isToday ? 'bg-gray-800 ring-1 ring-gray-600' : 'bg-gray-900'}`}
+                      <button key={dateStr} title={label}
+                        onClick={() => setSelectedDay(dateStr)}
+                        className={`w-3 h-3 rounded-sm cursor-pointer transition-opacity hover:opacity-75 ${selected ? 'ring-2 ring-white' : ''} ${bg ? '' : isToday ? 'bg-gray-800 ring-1 ring-gray-600' : 'bg-gray-900'}`}
                         style={bg ? { background: bg } : undefined} />
                     )
                   })}
@@ -293,7 +319,75 @@ export function DailyStats({ rows }: { rows: StatRow[] }) {
           <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm" style={{ background: `linear-gradient(135deg, ${LEONARD_COLOR} 0 50%, ${WILLIAM_COLOR} 50% 100%)` }} />Both</span>
           <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-gray-900 border border-gray-700" />No calls</span>
         </div>
+        <p className="text-[10px] text-gray-600 mt-2">Tip: click any day to see its stats and notes.</p>
       </div>
+
+      {/* Selected-day detail */}
+      {selectedDay && (() => {
+        const dayRows = rows.filter(r => r.date === selectedDay)
+        const dm = aggregate(dayRows)
+        return (
+          <div className="bg-gray-900 rounded-xl p-5">
+            <div className="flex items-center justify-between mb-4 gap-3">
+              <h2 className="text-sm font-semibold text-white">
+                {format(parseISO(selectedDay), 'EEEE, d MMM yyyy')}
+              </h2>
+              <button onClick={() => setSelectedDay(null)} className="text-xs text-gray-500 hover:text-gray-300">Close ✕</button>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+              <DayStat label="Calls" value={String(dm.calls)} />
+              <DayStat label="Pickup %" value={dm.calls ? pct(dm.pickupRate) : '—'} />
+              <DayStat label="Demos" value={String(dm.demos)} />
+              <DayStat label="Not interested" value={String(dm.notInterested)} />
+            </div>
+
+            <div className="flex flex-wrap gap-4 text-xs text-gray-500 mb-5">
+              {CALLERS.map(c => {
+                const m = aggregate(dayRows.filter(r => r.who_called === c))
+                return (
+                  <span key={c} className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full" style={{ background: c === 'Leonard' ? LEONARD_COLOR : WILLIAM_COLOR }} />
+                    {c}: {m.calls} calls{m.demos ? `, ${m.demos} demos` : ''}
+                  </span>
+                )
+              })}
+            </div>
+
+            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+              Notes{dayNotes.length ? ` (${dayNotes.length})` : ''}
+            </h3>
+            {loadingNotes ? (
+              <p className="text-xs text-gray-600">Loading…</p>
+            ) : dayNotes.length === 0 ? (
+              <p className="text-xs text-gray-600">No notes written this day.</p>
+            ) : (
+              <div className="space-y-2">
+                {dayNotes.map((n, i) => (
+                  <div key={i} className="bg-gray-950 border border-gray-800 rounded-lg p-3">
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <span className="text-sm font-medium text-gray-200 truncate">{n.company_name ?? 'Unknown company'}</span>
+                      <span className="text-[10px] text-gray-600 shrink-0">
+                        {n.caller_name ? `${n.caller_name} · ` : ''}{format(parseISO(n.created_at), 'HH:mm')}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-400 whitespace-pre-wrap">{n.note}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )
+      })()}
+    </div>
+  )
+}
+
+function DayStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="bg-gray-950 rounded-lg p-3">
+      <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-600 block">{label}</span>
+      <span className="text-xl font-bold tabular-nums text-white">{value}</span>
     </div>
   )
 }
