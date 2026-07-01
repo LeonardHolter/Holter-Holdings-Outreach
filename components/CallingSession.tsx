@@ -172,6 +172,7 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
 
   // Editable fields
   const [response, setResponse] = useState('')
+  const [reachedDM, setReachedDM] = useState(false)
   const [notes, setNotes] = useState('')
   const [ownersName, setOwnersName] = useState('')
   const [phoneNumber, setPhoneNumber] = useState('')
@@ -224,6 +225,7 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
 
   const loadCompany = useCallback((c: Company) => {
     setResponse(c.reach_out_response ?? '')
+    setReachedDM(!!c.reached_decision_maker)
     setNotes(c.notes ?? '')
     setOriginalNotes(c.notes ?? '')
     setOwnersName(c.owners_name ?? '')
@@ -430,6 +432,7 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
         payload.reach_out_response = response
         payload.who_called = sessionCaller || null
         payload.last_reach_out = todayStr()
+        payload.reached_decision_maker = reachedDM
         const newCallCount = (company.amount_of_calls ?? 0) + 1
         // "No answer" always comes back in exactly a week; other outcomes use
         // the value-based reschedule (unless a manual callback date is set).
@@ -448,6 +451,23 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ note: notes.trim(), caller_name: sessionCaller || null }),
+        }).catch(() => {})
+      }
+
+      // Log this call as an event (independent of the company's latest state)
+      // so trend stats — dials-per-demo, DM conversion, time-of-day, callback
+      // conversion, revenue-tier performance — can be computed accurately.
+      if (!skip && response) {
+        fetch('/api/call-events', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            company_id: company.id,
+            caller_name: sessionCaller || null,
+            response,
+            reached_decision_maker: reachedDM,
+            revenue_at_call: company.revenue ?? null,
+          }),
         }).catch(() => {})
       }
 
@@ -766,6 +786,18 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
 
           {/* Outcome + actions */}
           <div className="px-4 sm:px-6 pb-4 sm:pb-6 border-t border-gray-800 pt-4 sm:pt-5 space-y-3 sm:space-y-4">
+            <button
+              type="button"
+              onClick={() => setReachedDM(!reachedDM)}
+              className="flex items-center gap-2 text-xs text-gray-400 hover:text-gray-200 transition-colors"
+              title="Did you speak with the owner / daglig leder (not a gatekeeper or voicemail)?"
+            >
+              <span className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${reachedDM ? 'bg-blue-600' : 'bg-gray-700'}`}>
+                <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${reachedDM ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
+              </span>
+              Reached decision-maker (owner / daglig leder)
+            </button>
+
             <Field label="Call Outcome">
               <div className="grid grid-cols-2 gap-2 mt-1">
                 {RESPONSE_STATUSES.map(r => (

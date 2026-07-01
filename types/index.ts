@@ -20,6 +20,8 @@ export interface Company {
   org_nr: string | null
   revenue: number | null
   employees: string | null
+  reached_decision_maker: boolean | null
+  demo_outcome: string | null
   calls_leonard: number
   calls_william: number
   total_dialed: number
@@ -99,4 +101,11 @@ export const RESPONSE_STATUSES = [
 export const TEAM_MEMBERS = [
   'Leonard',
   'William',
+]
+
+export const DEMO_OUTCOMES = [
+  'Held',
+  'No-show',
+  'Won',
+  'Lost',
 ]

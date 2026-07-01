@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { format, parseISO } from 'date-fns'
-import type { StatRow } from '@/app/stats/page'
+import type { StatRow, CallEvent, DemoOutcomeCount } from '@/app/stats/page'
 
 interface DayNote {
   id?: string
@@ -60,6 +60,55 @@ function aggregate(rows: StatRow[]): Metrics {
 
 const pct = (x: number) => `${Math.round(x * 100)}%`
 
+// --- Event-log-derived metrics (call_events) --------------------------------
+// Unlike StatRow (a company's latest state), call_events has one row per
+// logged call, so these can measure trends: dials-per-demo, decision-maker
+// conversion, time-of-day pickup, callback conversion, revenue-tier performance.
+
+interface EventMetrics {
+  dials: number
+  demos: number
+  dialsPerDemo: number | null
+  dmReached: number
+  dmReachedRate: number | null
+  dmToDemoRate: number | null
+}
+
+function aggregateEvents(events: CallEvent[]): EventMetrics {
+  const dials = events.length
+  const demos = events.filter(e => e.response === 'Demo booked').length
+  const dm = events.filter(e => e.reached_decision_maker === true)
+  const dmDemos = dm.filter(e => e.response === 'Demo booked').length
+  return {
+    dials,
+    demos,
+    dialsPerDemo: demos > 0 ? dials / demos : null,
+    dmReached: dm.length,
+    dmReachedRate: dials ? dm.length / dials : null,
+    dmToDemoRate: dm.length ? dmDemos / dm.length : null,
+  }
+}
+
+const REVENUE_TIERS = ['Under 15M', '15–25M', 'Over 25M', 'Unknown'] as const
+type RevenueTier = (typeof REVENUE_TIERS)[number]
+
+// Mirrors the priority tiers in lib/db.ts PRIORITY_ORDER_BY.
+function revenueTier(rev: number | null): RevenueTier {
+  if (rev == null) return 'Unknown'
+  if (rev < 15000) return 'Under 15M'
+  if (rev <= 25000) return '15–25M'
+  return 'Over 25M'
+}
+
+function revenueTierPerf(events: CallEvent[]) {
+  return REVENUE_TIERS.map(tier => {
+    const evs = events.filter(e => revenueTier(e.revenue_at_call) === tier)
+    const dials = evs.length
+    const demos = evs.filter(e => e.response === 'Demo booked').length
+    return { tier, dials, demos, demoRate: dials ? demos / dials : null }
+  }).filter(t => t.dials > 0)
+}
+
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
@@ -74,7 +123,13 @@ function cellBackground(d?: { leonard: number; william: number; total: number })
 
 type Period = 'today' | 'week' | 'all'
 
-export function DailyStats({ rows }: { rows: StatRow[] }) {
+interface Props {
+  rows: StatRow[]
+  events: CallEvent[]
+  demoOutcomes: DemoOutcomeCount[]
+}
+
+export function DailyStats({ rows, events, demoOutcomes }: Props) {
   const [period, setPeriod] = useState<Period>('today')
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
   const [notesState, setNotesState] = useState<{ day: string; company: DayNote[]; dayNotes: DayNote[] } | null>(null)
@@ -165,6 +220,69 @@ export function DailyStats({ rows }: { rows: StatRow[] }) {
   const weekM = aggregate(rows.filter(r => r.date >= weekAgo))
   const allM = aggregate(rows)
   const goalMet = todayM.calls >= GOAL
+
+  // Event-log-derived metrics, filtered by the same period tab as Breakdown.
+  const periodEvents = useMemo(
+    () => events.filter(e => inPeriod(localDateStr(new Date(e.created_at)))),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [events, period, today, weekAgo]
+  )
+  const tierPerf = useMemo(() => revenueTierPerf(periodEvents), [periodEvents])
+
+  // Demo outcomes (all-time — demos are too sparse to slice by period).
+  const demoStats = useMemo(() => {
+    const map = new Map(demoOutcomes.map(d => [d.demo_outcome, d.n]))
+    const held = map.get('Held') ?? 0
+    const noShow = map.get('No-show') ?? 0
+    const won = map.get('Won') ?? 0
+    const lost = map.get('Lost') ?? 0
+    const pending = map.get(null) ?? 0
+    const resolvedShow = held + noShow
+    const resolvedOutcome = won + lost
+    return {
+      held, noShow, won, lost, pending,
+      totalBooked: held + noShow + won + lost + pending,
+      showRate: resolvedShow ? held / resolvedShow : null,
+      winRate: resolvedOutcome ? won / resolvedOutcome : null,
+    }
+  }, [demoOutcomes])
+
+  // Callback conversion (all-time): of companies ever marked "Call back
+  // later", how many later got a "Demo booked" event? Needs full event
+  // history per company, so it's not period-tabbed.
+  const callbackConversion = useMemo(() => {
+    const byCompany = new Map<string, CallEvent[]>()
+    for (const e of events) {
+      if (!e.company_id) continue
+      const arr = byCompany.get(e.company_id) ?? []
+      arr.push(e)
+      byCompany.set(e.company_id, arr)
+    }
+    let hadCallback = 0
+    let converted = 0
+    for (const evs of byCompany.values()) {
+      const cbIdx = evs.findIndex(e => e.response === 'Call back later')
+      if (cbIdx === -1) continue
+      hadCallback++
+      if (evs.slice(cbIdx + 1).some(e => e.response === 'Demo booked')) converted++
+    }
+    return { hadCallback, converted, rate: hadCallback ? converted / hadCallback : null }
+  }, [events])
+
+  // Best time to call (all-time): pickup rate by local hour of day.
+  const hourly = useMemo(() => {
+    const buckets = new Map<number, { dials: number; answered: number }>()
+    for (const e of events) {
+      const h = new Date(e.created_at).getHours()
+      const b = buckets.get(h) ?? { dials: 0, answered: 0 }
+      b.dials++
+      if (e.response !== 'No answer') b.answered++
+      buckets.set(h, b)
+    }
+    return Array.from(buckets.entries())
+      .map(([hour, v]) => ({ hour, dials: v.dials, pickupRate: v.dials ? v.answered / v.dials : 0 }))
+      .sort((a, b) => a.hour - b.hour)
+  }, [events])
 
   // Heatmap grid
   const days = useMemo(() => {
@@ -301,6 +419,132 @@ export function DailyStats({ rows }: { rows: StatRow[] }) {
               })()}
             </tbody>
           </table>
+        </div>
+      </div>
+
+      {/* Sales performance: dials/demo, decision-maker conversion */}
+      <div className="bg-gray-900 rounded-xl p-5">
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Sales Performance</h2>
+          <span className="text-[10px] text-gray-600">{period === 'today' ? 'Today' : period === 'week' ? 'This week' : 'All time'}</span>
+        </div>
+        {events.length === 0 ? (
+          <p className="text-xs text-gray-600">No logged calls yet — these numbers start filling in as you use the dialer.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm min-w-[520px]">
+              <thead>
+                <tr className="text-xs text-gray-500 uppercase tracking-wider border-b border-gray-800">
+                  <th className="text-left font-semibold py-2 pr-3">Caller</th>
+                  <th className="text-right font-semibold py-2 px-3">Dials&nbsp;/&nbsp;Demo</th>
+                  <th className="text-right font-semibold py-2 px-3">Reached&nbsp;DM&nbsp;%</th>
+                  <th className="text-right font-semibold py-2 pl-3">DM&nbsp;→&nbsp;Demo&nbsp;%</th>
+                </tr>
+              </thead>
+              <tbody>
+                {CALLERS.map(caller => {
+                  const em = aggregateEvents(periodEvents.filter(e => e.caller_name === caller))
+                  return (
+                    <tr key={caller} className="border-b border-gray-800/60">
+                      <td className="py-2.5 pr-3">
+                        <span className="flex items-center gap-2 text-gray-200 font-medium">
+                          <span className="w-2 h-2 rounded-full" style={{ background: caller === 'Leonard' ? LEONARD_COLOR : WILLIAM_COLOR }} />
+                          {caller}
+                        </span>
+                      </td>
+                      <td className="text-right tabular-nums text-white py-2.5 px-3">{em.dialsPerDemo != null ? em.dialsPerDemo.toFixed(0) : '—'}</td>
+                      <td className="text-right tabular-nums text-blue-400 py-2.5 px-3">{em.dmReachedRate != null ? pct(em.dmReachedRate) : '—'}</td>
+                      <td className="text-right tabular-nums text-green-400 py-2.5 pl-3">{em.dmToDemoRate != null ? pct(em.dmToDemoRate) : '—'}</td>
+                    </tr>
+                  )
+                })}
+                {(() => {
+                  const em = aggregateEvents(periodEvents)
+                  return (
+                    <tr className="font-semibold">
+                      <td className="py-2.5 pr-3 text-gray-300">Team total</td>
+                      <td className="text-right tabular-nums text-white py-2.5 px-3">{em.dialsPerDemo != null ? em.dialsPerDemo.toFixed(0) : '—'}</td>
+                      <td className="text-right tabular-nums text-blue-300 py-2.5 px-3">{em.dmReachedRate != null ? pct(em.dmReachedRate) : '—'}</td>
+                      <td className="text-right tabular-nums text-green-300 py-2.5 pl-3">{em.dmToDemoRate != null ? pct(em.dmToDemoRate) : '—'}</td>
+                    </tr>
+                  )
+                })()}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <p className="text-[10px] text-gray-600 mt-3">
+          &quot;Reached DM&quot; = you toggled &quot;Reached decision-maker&quot; on the call. Only calls logged since this feature shipped are counted.
+        </p>
+      </div>
+
+      {/* Demo performance + callback conversion */}
+      <div className="grid sm:grid-cols-2 gap-4">
+        <div className="bg-gray-900 rounded-xl p-5">
+          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">Demo Performance (all time)</h2>
+          <div className="grid grid-cols-2 gap-3">
+            <DayStat label="Show rate" value={demoStats.showRate != null ? pct(demoStats.showRate) : '—'} />
+            <DayStat label="Win rate" value={demoStats.winRate != null ? pct(demoStats.winRate) : '—'} />
+          </div>
+          <div className="flex flex-wrap gap-x-3 gap-y-1 mt-3 text-xs text-gray-500">
+            <span>{demoStats.held} held</span>
+            <span>{demoStats.noShow} no-show</span>
+            <span>{demoStats.won} won</span>
+            <span>{demoStats.lost} lost</span>
+            {demoStats.pending > 0 && <span>{demoStats.pending} pending outcome</span>}
+          </div>
+          {demoStats.totalBooked === 0 && <p className="text-xs text-gray-600 mt-2">No demos booked yet.</p>}
+        </div>
+
+        <div className="bg-gray-900 rounded-xl p-5">
+          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">Callback Conversion (all time)</h2>
+          <DayStat label="Callbacks → Demo" value={callbackConversion.rate != null ? pct(callbackConversion.rate) : '—'} />
+          <p className="text-xs text-gray-600 mt-2">
+            {callbackConversion.hadCallback === 0
+              ? 'No callbacks logged yet.'
+              : `${callbackConversion.converted} of ${callbackConversion.hadCallback} companies marked "Call back later" later became a demo.`}
+          </p>
+        </div>
+      </div>
+
+      {/* Revenue-tier performance + best time to call */}
+      <div className="grid sm:grid-cols-2 gap-4">
+        <div className="bg-gray-900 rounded-xl p-5">
+          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">Performance by Revenue Tier</h2>
+          {tierPerf.length === 0 ? (
+            <p className="text-xs text-gray-600">Not enough data yet.</p>
+          ) : (
+            <div className="space-y-2">
+              {tierPerf.map(t => (
+                <div key={t.tier} className="flex items-center gap-3 text-sm">
+                  <span className="w-16 text-gray-400 text-xs shrink-0">{t.tier}</span>
+                  <div className="flex-1 h-2 bg-gray-800 rounded-full overflow-hidden">
+                    <div className="h-full bg-blue-500 rounded-full" style={{ width: `${Math.min(100, (t.demoRate ?? 0) * 100)}%` }} />
+                  </div>
+                  <span className="text-xs text-gray-500 w-24 text-right tabular-nums">{t.demos}/{t.dials} · {t.demoRate != null ? pct(t.demoRate) : '—'}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="bg-gray-900 rounded-xl p-5">
+          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">Best Time to Call (all time)</h2>
+          {hourly.length === 0 ? (
+            <p className="text-xs text-gray-600">Not enough data yet.</p>
+          ) : (
+            <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+              {hourly.map(h => (
+                <div key={h.hour} className="flex items-center gap-3 text-sm">
+                  <span className="w-12 text-gray-400 text-xs shrink-0 tabular-nums">{String(h.hour).padStart(2, '0')}:00</span>
+                  <div className="flex-1 h-2 bg-gray-800 rounded-full overflow-hidden">
+                    <div className="h-full bg-green-500 rounded-full" style={{ width: `${h.pickupRate * 100}%` }} />
+                  </div>
+                  <span className="text-xs text-gray-500 w-24 text-right tabular-nums">{h.dials} dials · {pct(h.pickupRate)}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 

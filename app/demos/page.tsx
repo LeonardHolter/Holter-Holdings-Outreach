@@ -6,9 +6,12 @@ import { Nav } from '@/components/Nav'
 import DemoCard from '@/components/DemoCard'
 
 async function fetchBookedDemos(): Promise<Company[]> {
-  
+  // Resolved demos (Won/Lost) drop off the active list once an outcome is set.
   const rows = await query(
-    `SELECT * FROM companies WHERE reach_out_response = 'Demo booked' ORDER BY next_reach_out ASC NULLS LAST`
+    `SELECT * FROM companies
+     WHERE reach_out_response = 'Demo booked'
+       AND (demo_outcome IS NULL OR demo_outcome NOT IN ('Won', 'Lost'))
+     ORDER BY next_reach_out ASC NULLS LAST`
   )
   return rows as Company[]
 }

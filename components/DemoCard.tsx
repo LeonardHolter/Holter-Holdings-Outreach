@@ -4,6 +4,15 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { format, parseISO, isPast, isToday } from 'date-fns'
 import { toast } from 'sonner'
 import type { Company } from '@/types'
+import { DEMO_OUTCOMES } from '@/types'
+
+function demoOutcomeStyle(o: string): string {
+  if (o === 'Won') return 'border-green-600 bg-green-950/50 text-green-300'
+  if (o === 'Lost') return 'border-red-700 bg-red-950/50 text-red-300'
+  if (o === 'No-show') return 'border-orange-600 bg-orange-950/50 text-orange-300'
+  if (o === 'Held') return 'border-blue-600 bg-blue-950/50 text-blue-300'
+  return 'border-gray-700 bg-gray-800 text-gray-400'
+}
 
 function formatDate(d: string | null) {
   if (!d) return null
@@ -124,6 +133,9 @@ export default function DemoCard({ company: initial }: { company: Company }) {
           <div className="flex items-center gap-2 mt-0.5">
             {c.state && <span className="text-xs text-gray-500 font-medium">{c.state}</span>}
             <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-green-900/60 text-green-300">Demo booked</span>
+            {c.demo_outcome && (
+              <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded border ${demoOutcomeStyle(c.demo_outcome)}`}>{c.demo_outcome}</span>
+            )}
           </div>
         </div>
         <NextReachOutBadge date={c.next_reach_out} />
@@ -207,6 +219,23 @@ export default function DemoCard({ company: initial }: { company: Company }) {
               <p className="text-sm text-gray-300 whitespace-pre-wrap leading-relaxed">{c.notes}</p>
             </div>
           )}
+
+          {/* Demo outcome — set once the demo has happened */}
+          <div className="pt-2 border-t border-gray-800">
+            <p className="text-xs text-gray-500 uppercase tracking-wide font-medium mb-2">Demo Outcome</p>
+            <div className="grid grid-cols-4 gap-1.5">
+              {DEMO_OUTCOMES.map(o => (
+                <button
+                  key={o}
+                  disabled={saving}
+                  onClick={() => patch({ demo_outcome: c.demo_outcome === o ? null : o })}
+                  className={`text-center px-2 py-1.5 rounded-lg border text-xs transition-colors disabled:opacity-40 ${
+                    c.demo_outcome === o ? demoOutcomeStyle(o) : 'border-gray-700 bg-gray-800 text-gray-400 hover:border-gray-600 hover:text-gray-300'
+                  }`}
+                >{o}</button>
+              ))}
+            </div>
+          </div>
 
           {/* Next follow-up date setter */}
           <div className="pt-2 border-t border-gray-800">

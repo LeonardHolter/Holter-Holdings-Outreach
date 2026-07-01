@@ -28,6 +28,8 @@ CREATE TABLE companies (
   org_nr TEXT,            -- Norwegian org number (dedup key for scraped data)
   revenue BIGINT,         -- driftsinntekter in thousands NOK (from proff.no)
   employees TEXT,         -- employee count / range (from proff.no)
+  reached_decision_maker BOOLEAN, -- did the last call reach the owner/daglig leder?
+  demo_outcome TEXT,      -- 'Held' | 'No-show' | 'Won' | 'Lost' (set after the demo happens)
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -113,3 +115,18 @@ CREATE TABLE IF NOT EXISTS day_notes (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS day_notes_day_idx ON day_notes(day);
+
+-- One row per logged call (unlike companies, which only holds the latest
+-- state). Powers trend stats: dials-per-demo, decision-maker conversion,
+-- time-of-day pickup, callback conversion, revenue-tier performance.
+CREATE TABLE IF NOT EXISTS call_events (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID REFERENCES companies(id) ON DELETE SET NULL,
+  caller_name TEXT,
+  response TEXT NOT NULL,
+  reached_decision_maker BOOLEAN,
+  revenue_at_call BIGINT, -- snapshot of the company's revenue tier at call time
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS call_events_created_at_idx ON call_events(created_at);
+CREATE INDEX IF NOT EXISTS call_events_company_id_idx ON call_events(company_id);
