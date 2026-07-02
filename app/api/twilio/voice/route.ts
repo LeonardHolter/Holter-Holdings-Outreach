@@ -68,6 +68,9 @@ export async function POST(request: NextRequest) {
   const cbParams = new URLSearchParams()
   if (callerName) cbParams.set('callerName', callerName)
   if (callerId) cbParams.set('callerNumber', callerId)
+  // Pass the dialed number so the recording webhook can match the company
+  // even when no last_call_sid link exists
+  cbParams.set('to', to)
   const recordingCb = `${baseUrl}/api/twilio/recording-webhook?${cbParams.toString()}`
 
   const twiml = new VoiceResponse()

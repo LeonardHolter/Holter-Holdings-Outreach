@@ -14,8 +14,8 @@ interface DayNote {
 }
 
 const GOAL = 100
-const LEONARD_COLOR = '#22c55e' // green
-const WILLIAM_COLOR = '#eab308' // yellow
+const LEONARD_COLOR = '#ffffff' // white — monochrome theme
+const WILLIAM_COLOR = '#7a7a7a' // mid gray — monochrome theme
 const CALLERS = ['Leonard', 'William'] as const
 
 // Local (not UTC) YYYY-MM-DD, so day boundaries match how calls are logged.
@@ -118,7 +118,7 @@ function cellBackground(d?: { leonard: number; william: number; total: number })
   if (l && w) return `linear-gradient(135deg, ${LEONARD_COLOR} 0 50%, ${WILLIAM_COLOR} 50% 100%)`
   if (l) return LEONARD_COLOR
   if (w) return WILLIAM_COLOR
-  return '#4b5563'
+  return '#3a3a3a'
 }
 
 type Period = 'today' | 'week' | 'all'
@@ -643,7 +643,7 @@ export function DailyStats({ rows, events, demoOutcomes }: Props) {
               <button
                 onClick={addDayNote}
                 disabled={savingNote || !noteDraft.trim()}
-                className="px-3 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm rounded-lg transition-colors shrink-0"
+                className="px-3 py-2 bg-white hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed text-black text-sm rounded-lg transition-colors shrink-0"
               >
                 {savingNote ? 'Saving…' : 'Add'}
               </button>

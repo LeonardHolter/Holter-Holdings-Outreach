@@ -34,7 +34,7 @@ function MultiSelect({ label, options, selected, onChange }: MultiSelectProps) {
       >
         {label}
         {selected.length > 0 && (
-          <span className="bg-blue-600 text-white text-xs px-1.5 py-0.5 rounded-full font-medium">
+          <span className="bg-white text-black text-xs px-1.5 py-0.5 rounded-full font-medium">
             {selected.length}
           </span>
         )}

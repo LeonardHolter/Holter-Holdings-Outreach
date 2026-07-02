@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 import { query } from '@/lib/db'
 import { Nav } from '@/components/Nav'
 import { RecordingsList } from '@/components/RecordingsList'
+import { SyncRecordingsButton } from '@/components/SyncRecordingsButton'
 
 export interface Recording {
   id: string
@@ -41,9 +42,12 @@ export default async function RecordingsPage() {
       <Nav />
       <div className="flex-1 overflow-auto px-4 py-6">
         <div className="max-w-3xl mx-auto">
-          <div className="mb-6">
-            <h1 className="text-2xl font-bold text-white">Recordings</h1>
-            <p className="text-gray-400 text-sm mt-1">{recordings.length} recording{recordings.length !== 1 ? 's' : ''}</p>
+          <div className="mb-6 flex items-start justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-bold text-white">Recordings</h1>
+              <p className="text-gray-400 text-sm mt-1">{recordings.length} recording{recordings.length !== 1 ? 's' : ''}</p>
+            </div>
+            <SyncRecordingsButton />
           </div>
           <RecordingsList recordings={recordings} />
         </div>

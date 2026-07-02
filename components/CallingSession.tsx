@@ -11,7 +11,7 @@ interface Props {
   dialNumber?: string
 }
 
-async function patchCompany(id: string, payload: Partial<Company>): Promise<Company> {
+async function patchCompanyOnce(id: string, payload: Partial<Company>): Promise<Company> {
   const res = await fetch(`/api/companies/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
@@ -19,6 +19,17 @@ async function patchCompany(id: string, payload: Partial<Company>): Promise<Comp
   })
   if (!res.ok) throw new Error('Failed to save')
   return res.json()
+}
+
+// Call records are the product — retry once on transient failures
+// (flaky network, cold serverless function) before giving up.
+async function patchCompany(id: string, payload: Partial<Company>): Promise<Company> {
+  try {
+    return await patchCompanyOnce(id, payload)
+  } catch {
+    await new Promise(r => setTimeout(r, 1000))
+    return patchCompanyOnce(id, payload)
+  }
 }
 
 function todayStr() { return format(new Date(), 'yyyy-MM-dd') }
@@ -401,7 +412,7 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
       setRecordingUploading(false)
       return
     }
-    try {
+    const upload = async () => {
       const form = new FormData()
       form.append('audio', blob, `recording.${ext}`)
       form.append('mime_type', mimeType)
@@ -416,8 +427,18 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
         const detail = await res.text().catch(() => '')
         throw new Error(`HTTP ${res.status}${detail ? ` — ${detail.slice(0, 120)}` : ''}`)
       }
-      const { id } = await res.json()
-      setLastRecordingId(id)
+      return res.json() as Promise<{ id: string }>
+    }
+    try {
+      // The audio only exists in this blob — retry once before giving up
+      let result: { id: string }
+      try {
+        result = await upload()
+      } catch {
+        await new Promise(r => setTimeout(r, 1500))
+        result = await upload()
+      }
+      setLastRecordingId(result.id)
       toast.success('Recording saved')
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'unknown error'
@@ -505,7 +526,10 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
       setQueue(q => q.map(c => c.id === updated.id ? updated : c))
       toast.success('Skipped')
     } catch {
-      toast.error('Failed to save')
+      // Stay on this company — advancing would silently discard the record
+      toast.error('Failed to save — still on this company, please try again')
+      setSaving(false)
+      return
     } finally {
       setSaving(false)
     }
@@ -540,7 +564,7 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
         <div className="flex gap-3">
           <a href="/pipeline" className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg text-sm transition-colors">Back to Companies</a>
           <button onClick={() => { setIndex(0); setDone(false); if (queue[0]) loadCompany(queue[0]) }}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm transition-colors">Start over</button>
+            className="px-4 py-2 bg-white hover:bg-gray-200 text-black rounded-lg text-sm transition-colors">Start over</button>
         </div>
       </div>
     )
@@ -875,7 +899,7 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
                 Skip
               </button>
               <button onClick={() => handleNext(false)} disabled={saving || !response}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 active:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold text-sm transition-colors touch-manipulation">
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-white hover:bg-gray-200 active:bg-gray-300 disabled:opacity-40 disabled:cursor-not-allowed text-black font-semibold text-sm transition-colors touch-manipulation">
                 {saving ? (
                   <><svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />

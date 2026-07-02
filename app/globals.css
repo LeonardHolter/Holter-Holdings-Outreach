@@ -1,8 +1,87 @@
 @import "tailwindcss";
 
+/* ─────────────────────────────────────────────────────────────
+   Monochrome design system — modern black & white.
+
+   The app was originally styled with colored Tailwind utilities
+   (blue/green/red/yellow accents). Instead of rewriting every
+   class, we redefine the color tokens themselves so the whole
+   interface renders in black, white, and neutral grays.
+
+   Accent families (blue, green, red, …) share one ramp tuned for
+   a dark UI: light shades (50–400, used for text/icons) render
+   near-white so highlights still stand out; dark shades (500–950,
+   used for buttons/surfaces/borders) render as layered charcoals.
+   ───────────────────────────────────────────────────────────── */
+@theme {
+  /* Neutral gray ramp — pure, no blue tint, true-black base */
+  --color-gray-50:  #fafafa;
+  --color-gray-100: #f0f0f0;
+  --color-gray-200: #e0e0e0;
+  --color-gray-300: #c7c7c7;
+  --color-gray-400: #9a9a9a;
+  --color-gray-500: #6f6f6f;
+  --color-gray-600: #4a4a4a;
+  --color-gray-700: #2e2e2e;
+  --color-gray-800: #1c1c1c;
+  --color-gray-900: #101010;
+  --color-gray-950: #000000;
+
+  /* Accent ramp: light = white highlight, dark = charcoal surface */
+  --color-blue-50:  #ffffff; --color-blue-100: #f7f7f7; --color-blue-200: #ededed;
+  --color-blue-300: #e0e0e0; --color-blue-400: #d6d6d6; --color-blue-500: #5c5c5c;
+  --color-blue-600: #3d3d3d; --color-blue-700: #2c2c2c; --color-blue-800: #212121;
+  --color-blue-900: #161616; --color-blue-950: #0e0e0e;
+
+  --color-green-50:  #ffffff; --color-green-100: #f7f7f7; --color-green-200: #ededed;
+  --color-green-300: #e0e0e0; --color-green-400: #d6d6d6; --color-green-500: #5c5c5c;
+  --color-green-600: #3d3d3d; --color-green-700: #2c2c2c; --color-green-800: #212121;
+  --color-green-900: #161616; --color-green-950: #0e0e0e;
+
+  --color-red-50:  #ffffff; --color-red-100: #f7f7f7; --color-red-200: #ededed;
+  --color-red-300: #e0e0e0; --color-red-400: #d6d6d6; --color-red-500: #5c5c5c;
+  --color-red-600: #3d3d3d; --color-red-700: #2c2c2c; --color-red-800: #212121;
+  --color-red-900: #161616; --color-red-950: #0e0e0e;
+
+  --color-yellow-50:  #ffffff; --color-yellow-100: #f7f7f7; --color-yellow-200: #ededed;
+  --color-yellow-300: #e0e0e0; --color-yellow-400: #d6d6d6; --color-yellow-500: #5c5c5c;
+  --color-yellow-600: #3d3d3d; --color-yellow-700: #2c2c2c; --color-yellow-800: #212121;
+  --color-yellow-900: #161616; --color-yellow-950: #0e0e0e;
+
+  --color-indigo-50:  #ffffff; --color-indigo-100: #f7f7f7; --color-indigo-200: #ededed;
+  --color-indigo-300: #e0e0e0; --color-indigo-400: #d6d6d6; --color-indigo-500: #5c5c5c;
+  --color-indigo-600: #3d3d3d; --color-indigo-700: #2c2c2c; --color-indigo-800: #212121;
+  --color-indigo-900: #161616; --color-indigo-950: #0e0e0e;
+
+  --color-purple-50:  #ffffff; --color-purple-100: #f7f7f7; --color-purple-200: #ededed;
+  --color-purple-300: #e0e0e0; --color-purple-400: #d6d6d6; --color-purple-500: #5c5c5c;
+  --color-purple-600: #3d3d3d; --color-purple-700: #2c2c2c; --color-purple-800: #212121;
+  --color-purple-900: #161616; --color-purple-950: #0e0e0e;
+
+  --color-amber-50:  #ffffff; --color-amber-100: #f7f7f7; --color-amber-200: #ededed;
+  --color-amber-300: #e0e0e0; --color-amber-400: #d6d6d6; --color-amber-500: #5c5c5c;
+  --color-amber-600: #3d3d3d; --color-amber-700: #2c2c2c; --color-amber-800: #212121;
+  --color-amber-900: #161616; --color-amber-950: #0e0e0e;
+
+  --color-emerald-50:  #ffffff; --color-emerald-100: #f7f7f7; --color-emerald-200: #ededed;
+  --color-emerald-300: #e0e0e0; --color-emerald-400: #d6d6d6; --color-emerald-500: #5c5c5c;
+  --color-emerald-600: #3d3d3d; --color-emerald-700: #2c2c2c; --color-emerald-800: #212121;
+  --color-emerald-900: #161616; --color-emerald-950: #0e0e0e;
+
+  --color-orange-50:  #ffffff; --color-orange-100: #f7f7f7; --color-orange-200: #ededed;
+  --color-orange-300: #e0e0e0; --color-orange-400: #d6d6d6; --color-orange-500: #5c5c5c;
+  --color-orange-600: #3d3d3d; --color-orange-700: #2c2c2c; --color-orange-800: #212121;
+  --color-orange-900: #161616; --color-orange-950: #0e0e0e;
+
+  --color-violet-50:  #ffffff; --color-violet-100: #f7f7f7; --color-violet-200: #ededed;
+  --color-violet-300: #e0e0e0; --color-violet-400: #d6d6d6; --color-violet-500: #5c5c5c;
+  --color-violet-600: #3d3d3d; --color-violet-700: #2c2c2c; --color-violet-800: #212121;
+  --color-violet-900: #161616; --color-violet-950: #0e0e0e;
+}
+
 :root {
-  --background: #030712;
-  --foreground: #f9fafb;
+  --background: #000000;
+  --foreground: #ffffff;
 }
 
 html {
@@ -13,6 +92,14 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-geist-sans), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* High-contrast selection — white on black inverted */
+::selection {
+  background: #ffffff;
+  color: #000000;
 }
 
 /* Scrollbar styling */
@@ -21,14 +108,14 @@ body {
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #111827;
+  background: #0a0a0a;
 }
 ::-webkit-scrollbar-thumb {
-  background: #374151;
+  background: #2e2e2e;
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #4b5563;
+  background: #4a4a4a;
 }
 
 /* Table sticky first column shadow */
