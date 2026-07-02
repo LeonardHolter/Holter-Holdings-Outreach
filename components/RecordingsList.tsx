@@ -68,7 +68,7 @@ export function RecordingsList({ recordings }: { recordings: Recording[] }) {
             <button
               onClick={() => handleDelete(rec.id)}
               disabled={deleting === rec.id}
-              className="shrink-0 p-1.5 text-gray-600 hover:text-red-400 transition-colors rounded"
+              className="shrink-0 p-1.5 text-gray-600 hover:text-white transition-colors rounded"
               title="Delete recording"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -90,7 +90,7 @@ export function RecordingsList({ recordings }: { recordings: Recording[] }) {
               onClick={() => setPlaying(rec.id)}
               className="flex items-center gap-2 px-3 py-2 bg-gray-800 hover:bg-gray-700 text-white text-sm rounded-lg transition-colors w-full"
             >
-              <svg className="w-4 h-4 text-green-400 shrink-0" fill="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4 text-white shrink-0" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M8 5v14l11-7z" />
               </svg>
               Play recording

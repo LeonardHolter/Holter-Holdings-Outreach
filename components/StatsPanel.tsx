@@ -35,8 +35,8 @@ export function StatsPanel({ companies }: Props) {
           <Stat label="Companies" value={total.toLocaleString()} />
           <Stat label="Called" value={called.toLocaleString()} />
           <Stat label="Not Called" value={notCalled.toLocaleString()} color="text-gray-400" />
-          <Stat label="Demos Booked" value={demoBooked.toString()} color="text-green-400" />
-          <Stat label="Not Interested" value={notInterested.toString()} color="text-red-400" />
+          <Stat label="Demos Booked" value={demoBooked.toString()} color="text-white" />
+          <Stat label="Not Interested" value={notInterested.toString()} color="text-gray-400" />
         </div>
       )}
     </div>

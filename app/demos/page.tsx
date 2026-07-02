@@ -33,10 +33,10 @@ export default async function DemosPage() {
                 {demos.length} demo{demos.length !== 1 ? 's' : ''} scheduled
               </p>
             </div>
-            <div className="flex items-center gap-3 text-xs text-gray-500">
-              <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-red-500 inline-block" />Overdue</span>
-              <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-yellow-500 inline-block" />Today</span>
-              <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" />Upcoming</span>
+            <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-wider text-gray-500">
+              <span className="px-1.5 py-0.5 rounded bg-white text-black font-bold">Overdue</span>
+              <span className="px-1.5 py-0.5 rounded border border-white text-white">Today</span>
+              <span className="px-1.5 py-0.5 rounded border border-gray-700">Upcoming</span>
             </div>
           </div>
 

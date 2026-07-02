@@ -34,8 +34,13 @@ export default function LoginPage() {
     <div className="min-h-screen bg-gray-950 flex items-center justify-center px-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-white">AI Receptionist Sales</h1>
-          <p className="text-gray-400 mt-1 text-sm">Sign in to continue</p>
+          <span className="inline-flex w-10 h-10 rounded-lg bg-white items-center justify-center mb-4">
+            <svg className="w-5 h-5 text-black" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/>
+            </svg>
+          </span>
+          <h1 className="text-2xl font-bold tracking-tight text-white">AI Receptionist</h1>
+          <p className="font-mono text-[11px] uppercase tracking-widest text-gray-500 mt-1">Sales console</p>
         </div>
 
         <form
@@ -43,7 +48,7 @@ export default function LoginPage() {
           className="bg-gray-900 border border-gray-800 rounded-xl p-8 space-y-5"
         >
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1.5">
+            <label className="block font-mono text-[10px] uppercase tracking-widest font-medium text-gray-500 mb-1.5">
               Password
             </label>
             <input
@@ -52,7 +57,7 @@ export default function LoginPage() {
               onChange={(e) => setPassword(e.target.value)}
               required
               autoComplete="current-password"
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:border-white text-sm"
               placeholder="••••••••"
             />
           </div>

@@ -14,6 +14,10 @@
    used for buttons/surfaces/borders) render as layered charcoals.
    ───────────────────────────────────────────────────────────── */
 @theme {
+  /* Wire Tailwind's font utilities to the Geist fonts loaded in layout.tsx */
+  --font-sans: var(--font-geist-sans), system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+
   /* Neutral gray ramp — pure, no blue tint, true-black base */
   --color-gray-50:  #fafafa;
   --color-gray-100: #f0f0f0;

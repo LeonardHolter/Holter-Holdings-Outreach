@@ -91,12 +91,18 @@ function nextRescheduleDate(googleReviews: number | null, callCount: number): st
   return format(d, 'yyyy-MM-dd')
 }
 
-function getResponseButtonStyle(r: string): string {
-  if (r === 'Demo booked') return 'border-green-600 bg-green-950/50 text-green-300'
-  if (r === 'Not interested' || r === 'Wrong number') return 'border-red-700 bg-red-950/50 text-red-300'
-  if (r === 'Call back later') return 'border-yellow-600 bg-yellow-950/50 text-yellow-300'
-  if (r === 'No answer') return 'border-orange-600 bg-orange-950/50 text-orange-300'
-  return 'border-blue-600 bg-blue-950/50 text-blue-300'
+// Revenue is stored in thousands NOK (driftsinntekter). Under 15 MNOK is the
+// ideal customer profile this tool exists to find — surface that while dialing.
+function fmtRevenue(revenue: number | null): string | null {
+  if (revenue == null) return null
+  return `${(revenue / 1000).toFixed(1).replace('.', ',')} MNOK`
+}
+
+function fitBadge(revenue: number | null): { label: string; hot: boolean } {
+  if (revenue == null) return { label: 'Revenue unknown', hot: false }
+  if (revenue < 15000) return { label: 'ICP fit', hot: true }
+  if (revenue <= 25000) return { label: 'Large', hot: false }
+  return { label: 'Too big', hot: false }
 }
 
 export function CallingSession({ initialQueue, dialNumber }: Props) {
@@ -550,8 +556,8 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
   if (done || queue.length === 0) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center gap-6 text-center px-4">
-        <div className="w-16 h-16 rounded-full bg-green-900/40 border border-green-700 flex items-center justify-center">
-          <svg className="w-8 h-8 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <div className="w-16 h-16 rounded-full bg-white flex items-center justify-center">
+          <svg className="w-8 h-8 text-black" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
           </svg>
         </div>
@@ -596,7 +602,7 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
         <div className="fixed right-0 top-12 bottom-0 z-30 w-full sm:w-96 bg-gray-900 border-l border-gray-800 shadow-2xl flex flex-col">
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800 shrink-0">
             <div className="flex items-center gap-2">
-              <svg className="w-4 h-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
               <span className="text-sm font-semibold text-white">Call Script</span>
@@ -617,172 +623,185 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
 
       <div className="w-full max-w-2xl space-y-3 sm:space-y-4">
 
-        {/* Caller picker */}
+        {/* Session status row — console style */}
         {!sessionCaller ? (
-          <div className="bg-blue-950/30 border border-blue-800/50 rounded-xl p-4 flex items-center gap-3">
-            <svg className="w-4 h-4 text-blue-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-            </svg>
-            <span className="text-sm text-blue-300">Who is calling today?</span>
+          <div className="border border-gray-700 rounded-xl p-4 flex items-center gap-3 bg-gray-900">
+            <span className="w-2 h-2 rounded-full bg-white animate-pulse shrink-0" />
+            <span className="text-sm text-gray-200 font-medium">Who is calling today?</span>
             <select value={sessionCaller} onChange={e => setSessionCaller(e.target.value)}
-              className="ml-auto bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500">
+              className="ml-auto bg-black border border-gray-600 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-white">
               <option value="">Select caller…</option>
               {TEAM_MEMBERS.map(m => <option key={m} value={m}>{m}</option>)}
             </select>
           </div>
         ) : (
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <span className="text-sm text-gray-500">
-              Logging as <span className="text-gray-300 font-medium">{sessionCaller}</span>
-              <button onClick={() => setSessionCaller('')} className="ml-2 text-gray-600 hover:text-gray-400 text-xs underline">change</button>
+          <div className="flex items-center justify-between gap-3 flex-wrap font-mono text-[11px] uppercase tracking-wider">
+            <span className="text-gray-500">
+              Caller <span className="text-white font-semibold normal-case text-xs">{sessionCaller}</span>
+              <button onClick={() => setSessionCaller('')} className="ml-2 text-gray-600 hover:text-gray-400 lowercase underline decoration-gray-700">change</button>
             </span>
             <div className="flex items-center gap-3">
-              {/* Online count badge */}
               {(() => {
                 const total = 1 + otherSessions.length
                 return (
-                  <span className="flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full bg-emerald-900/40 border border-emerald-800/60 text-emerald-400">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  <span className="flex items-center gap-1.5 text-gray-400">
+                    <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
                     {total} online
                   </span>
                 )
               })()}
               {otherSessions.map(s => (
-                <span key={s.caller_name} className="hidden sm:flex items-center gap-1 text-xs text-gray-500">
+                <span key={s.caller_name} className="hidden sm:inline text-gray-600 normal-case">
                   {s.caller_name}{s.company_name ? ` → ${s.company_name}` : ''}
                 </span>
               ))}
-              <span className="text-sm text-gray-500">{index + 1} / {queue.length}</span>
+              <span className="text-gray-400 tabular-nums">{index + 1} / {queue.length}</span>
             </div>
           </div>
         )}
 
-        {/* Progress bar */}
-        <div className="w-full bg-gray-800 rounded-full h-1.5 overflow-hidden">
-          <div className="h-1.5 bg-blue-500 rounded-full transition-all duration-300" style={{ width: `${progress}%` }} />
+        {/* Queue progress */}
+        <div className="w-full bg-gray-800 rounded-full h-1 overflow-hidden">
+          <div className="h-1 bg-white rounded-full transition-all duration-300" style={{ width: `${progress}%` }} />
         </div>
 
-        {/* Company card */}
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
+        {/* Company card — dialer console */}
+        <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
 
-          {/* Name */}
-          <div className="px-4 sm:px-6 pt-4 sm:pt-6 pb-3 sm:pb-4 border-b border-gray-800">
-            <label className="text-xs text-gray-500 uppercase tracking-wide font-medium">Company</label>
+          {/* Name + qualification strip */}
+          <div className="px-4 sm:px-6 pt-4 sm:pt-5 pb-4 border-b border-gray-800">
             <input value={companyName} onChange={e => setCompanyName(e.target.value)}
-              className="mt-1 w-full bg-transparent text-xl sm:text-2xl font-bold text-white focus:outline-none border-b border-transparent focus:border-gray-600 pb-1 transition-colors"
+              className="w-full bg-transparent text-2xl sm:text-3xl font-bold tracking-tight text-white focus:outline-none border-b border-transparent focus:border-gray-600 pb-1 transition-colors"
               placeholder="Company name" />
-            {company && callbackMatchesNow(company) && (
-              <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-yellow-900/50 border border-yellow-700/60 text-yellow-300 text-xs font-medium">
-                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                Callback window{company.callback_day ? ` · ${company.callback_day}` : ''}{company.callback_time ? ` ${company.callback_time.slice(0,5)}` : ''}
-              </div>
-            )}
+
+            {/* Why this lead: revenue fit, region, call history — at a glance */}
+            <div className="mt-3 flex items-center gap-2 flex-wrap font-mono text-[11px] uppercase tracking-wider">
+              {(() => {
+                const fit = fitBadge(company?.revenue ?? null)
+                const rev = fmtRevenue(company?.revenue ?? null)
+                return (
+                  <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded border ${
+                    fit.hot ? 'border-white bg-white text-black font-bold' : 'border-gray-700 text-gray-400'
+                  }`}>
+                    {fit.label}{rev ? ` · ${rev}` : ''}
+                  </span>
+                )
+              })()}
+              {company?.state && (
+                <span className="inline-flex items-center px-2 py-1 rounded border border-gray-700 text-gray-400">
+                  {company.state}
+                </span>
+              )}
+              <span className="inline-flex items-center px-2 py-1 rounded border border-gray-700 text-gray-400 tabular-nums">
+                {(company?.amount_of_calls ?? 0) === 0 ? 'Never called' : `Called ${company?.amount_of_calls}×`}
+              </span>
+              {company && callbackMatchesNow(company) && (
+                <span className="inline-flex items-center gap-1 px-2 py-1 rounded border border-white text-white font-bold">
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Callback now{company.callback_day ? ` · ${company.callback_day.slice(0,3)}` : ''}{company.callback_time ? ` ${company.callback_time.slice(0,5)}` : ''}
+                </span>
+              )}
+            </div>
           </div>
 
-          <div className="px-4 sm:px-6 py-4 sm:py-5 grid grid-cols-2 gap-3 sm:gap-5">
-
-            {/* Phone — full width, tap to call */}
-            <div className="col-span-2">
-              <Field label="Phone Number">
-                <div className="flex items-center gap-2 flex-wrap">
-                  {phoneNumber ? (
-                    <a href={`tel:${phoneNumber}`}
-                      className="text-blue-400 hover:text-blue-300 text-lg font-semibold transition-colors flex-1 truncate">
-                      {phoneNumber}
-                    </a>
-                  ) : (
-                    <span className="text-gray-600 text-base flex-1">—</span>
-                  )}
+          {/* Hero action: CALL */}
+          <div className="px-4 sm:px-6 py-4 border-b border-gray-800 space-y-3">
+            <div className="flex items-stretch gap-2">
+              {phoneNumber ? (
+                <a href={`tel:${phoneNumber}`}
+                  className="flex-1 flex items-center justify-center gap-3 h-14 rounded-xl bg-white hover:bg-gray-200 active:bg-gray-300 text-black transition-colors touch-manipulation">
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/>
+                  </svg>
+                  <span className="text-base font-bold">Call</span>
+                  <span className="font-mono text-base font-semibold tabular-nums">{phoneNumber}</span>
+                </a>
+              ) : (
+                <div className="flex-1 flex items-center justify-center h-14 rounded-xl border border-dashed border-gray-700 text-gray-600 text-sm">
+                  No phone number
                 </div>
-                <input value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)}
-                  placeholder="Edit phone…"
-                  className="mt-2 w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500" />
+              )}
 
-                {/* Record button + auto-record toggle */}
-                <div className="mt-3 flex items-center gap-3 flex-wrap">
-                  {isRecording ? (
-                    <button
-                      onClick={stopRecording}
-                      className="flex items-center gap-2 px-3 py-2 bg-red-900/40 border border-red-700 hover:bg-red-900/60 text-red-300 text-sm rounded-lg transition-colors"
-                    >
-                      <span className="w-2 h-2 rounded-full bg-red-400 animate-pulse" />
-                      Stop recording
-                    </button>
-                  ) : recordingUploading ? (
-                    <span className="text-xs text-gray-500 flex items-center gap-1.5">
-                      <span className="w-3 h-3 border border-gray-500 border-t-gray-300 rounded-full animate-spin" />
-                      Saving recording…
-                    </span>
-                  ) : lastRecordingId ? (
-                    <a
-                      href="/recordings"
-                      className="flex items-center gap-1.5 text-xs text-green-400 hover:text-green-300 transition-colors"
-                    >
-                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                      </svg>
-                      Recording saved · View
-                    </a>
-                  ) : (
-                    <button
-                      onClick={startRecording}
-                      className="flex items-center gap-2 px-3 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 text-sm rounded-lg transition-colors"
-                    >
-                      <svg className="w-3.5 h-3.5 text-red-400" fill="currentColor" viewBox="0 0 24 24">
-                        <circle cx="12" cy="12" r="6" />
-                      </svg>
-                      Record call
-                    </button>
-                  )}
-
-                  {/* Auto-record toggle */}
-                  <button
-                    type="button"
-                    onClick={() => setAutoRecord(!autoRecord)}
-                    className="flex items-center gap-2 text-xs text-gray-400 hover:text-gray-200 transition-colors ml-auto"
-                    title="Automatically record each call and save it when you pick an outcome"
-                  >
-                    <span
-                      className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${autoRecord ? 'bg-green-600' : 'bg-gray-700'}`}
-                    >
-                      <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${autoRecord ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
-                    </span>
-                    Auto-record
-                  </button>
-                </div>
-              </Field>
+              {/* Recording control — console REC button */}
+              {isRecording ? (
+                <button
+                  onClick={stopRecording}
+                  className="shrink-0 w-24 flex flex-col items-center justify-center gap-1 h-14 rounded-xl border-2 border-white bg-gray-950 text-white transition-colors touch-manipulation"
+                >
+                  <span className="flex items-center gap-1.5 font-mono text-[10px] font-bold uppercase tracking-widest">
+                    <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
+                    Rec
+                  </span>
+                  <span className="text-[10px] text-gray-400">tap to stop</span>
+                </button>
+              ) : recordingUploading ? (
+                <span className="shrink-0 w-24 flex flex-col items-center justify-center gap-1 h-14 rounded-xl border border-gray-700 text-gray-400">
+                  <span className="w-3.5 h-3.5 border border-gray-500 border-t-white rounded-full animate-spin" />
+                  <span className="font-mono text-[10px] uppercase tracking-widest">Saving</span>
+                </span>
+              ) : lastRecordingId ? (
+                <a href="/recordings"
+                  className="shrink-0 w-24 flex flex-col items-center justify-center gap-1 h-14 rounded-xl border border-gray-700 text-gray-300 hover:border-gray-500 transition-colors">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span className="font-mono text-[10px] uppercase tracking-widest">Saved</span>
+                </a>
+              ) : (
+                <button
+                  onClick={startRecording}
+                  className="shrink-0 w-24 flex flex-col items-center justify-center gap-1 h-14 rounded-xl border border-gray-700 bg-gray-950 text-gray-300 hover:border-gray-500 hover:text-white transition-colors touch-manipulation"
+                >
+                  <span className="w-2.5 h-2.5 rounded-full border-2 border-current" />
+                  <span className="font-mono text-[10px] font-bold uppercase tracking-widest">Rec</span>
+                </button>
+              )}
             </div>
 
-            {/* Region */}
+            {/* Auto-record toggle */}
+            <button
+              type="button"
+              onClick={() => setAutoRecord(!autoRecord)}
+              className="flex items-center gap-2 text-xs text-gray-400 hover:text-gray-200 transition-colors"
+              title="Automatically record each call and save it when you pick an outcome"
+            >
+              <span
+                className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${autoRecord ? 'bg-white' : 'bg-gray-700'}`}
+              >
+                <span className={`inline-block h-3 w-3 transform rounded-full transition-transform ${autoRecord ? 'translate-x-3.5 bg-black' : 'translate-x-0.5 bg-white'}`} />
+              </span>
+              <span className="font-mono text-[11px] uppercase tracking-wider">Auto-record {autoRecord ? 'on' : 'off'}</span>
+            </button>
+          </div>
+
+          {/* Details */}
+          <div className="px-4 sm:px-6 py-4 sm:py-5 grid grid-cols-2 gap-3 sm:gap-4">
+            <Field label="Phone">
+              <input value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)}
+                placeholder="—"
+                className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-white" />
+            </Field>
+
             <Field label="Region">
               <select value={state} onChange={e => setState(e.target.value)}
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+                className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-white">
                 <option value="">—</option>
                 {REGIONS.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </Field>
 
-            {/* Owner */}
-            <Field label="Owner's Name">
+            <Field label="Owner / Daglig leder">
               <input value={ownersName} onChange={e => setOwnersName(e.target.value)}
                 placeholder="Unknown"
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500" />
+                className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-white" />
             </Field>
 
-            {/* Email */}
             <Field label="Email">
               <input value={emailField} onChange={e => setEmailField(e.target.value)}
                 placeholder="—" type="email"
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500" />
-            </Field>
-
-            {/* Times called */}
-            <Field label="Times Called">
-              <span className={`font-semibold text-lg ${(company?.amount_of_calls ?? 0) > 0 ? 'text-yellow-400' : 'text-gray-500'}`}>
-                {company?.amount_of_calls ?? 0}
-              </span>
+                className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-white" />
             </Field>
           </div>
 
@@ -791,7 +810,7 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
             <Field label="Notes">
               <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
                 placeholder="Add notes…"
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 resize-none" />
+                className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-white resize-none" />
             </Field>
 
             {(noteHistory.length > 0 || loadingHistory) && (
@@ -828,7 +847,7 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
             {!showCallback ? (
               <button
                 onClick={() => setShowCallback(true)}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed border-gray-600 text-sm text-gray-400 hover:border-yellow-500 hover:text-yellow-400 transition-colors touch-manipulation w-full"
+                className="flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed border-gray-600 text-sm text-gray-400 hover:border-gray-400 hover:text-gray-200 transition-colors touch-manipulation w-full"
               >
                 <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -839,19 +858,19 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
               <div className="space-y-3">
                 <Field label="Callback Date">
                   <input type="date" value={callbackDate} onChange={e => setCallbackDate(e.target.value)}
-                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-yellow-500 [color-scheme:dark]" />
+                    className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-white [color-scheme:dark]" />
                 </Field>
                 <Field label="Preferred Day & Time">
                   <div className="flex gap-2 flex-wrap">
                     <select value={callbackDay} onChange={e => setCallbackDay(e.target.value)}
-                      className="flex-1 min-w-[120px] bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-yellow-500">
+                      className="flex-1 min-w-[120px] bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-white">
                       <option value="">Any day</option>
                       {['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].map(d => (
                         <option key={d} value={d}>{d}</option>
                       ))}
                     </select>
                     <input type="time" value={callbackTime} onChange={e => setCallbackTime(e.target.value)}
-                      className="flex-1 min-w-[120px] bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-yellow-500 [color-scheme:dark]" />
+                      className="flex-1 min-w-[120px] bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-white [color-scheme:dark]" />
                     <button onClick={() => { setCallbackDay(''); setCallbackTime(''); setCallbackDate(''); setShowCallback(false) }}
                       className="px-2 text-gray-600 hover:text-gray-400 transition-colors" title="Clear">
                       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -872,18 +891,20 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
               className="flex items-center gap-2 text-xs text-gray-400 hover:text-gray-200 transition-colors"
               title="Did you speak with the owner / daglig leder (not a gatekeeper or voicemail)?"
             >
-              <span className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${reachedDM ? 'bg-blue-600' : 'bg-gray-700'}`}>
-                <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${reachedDM ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
+              <span className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${reachedDM ? 'bg-white' : 'bg-gray-700'}`}>
+                <span className={`inline-block h-3 w-3 transform rounded-full transition-transform ${reachedDM ? 'translate-x-3.5 bg-black' : 'translate-x-0.5 bg-white'}`} />
               </span>
-              Reached decision-maker (owner / daglig leder)
+              <span className="font-mono text-[11px] uppercase tracking-wider">Reached decision-maker</span>
             </button>
 
             <Field label="Call Outcome">
               <div className="grid grid-cols-2 gap-2 mt-1">
                 {RESPONSE_STATUSES.map(r => (
                   <button key={r} onClick={() => { setResponse(r); if (recordingRef.current) stopRecording() }}
-                    className={`text-left px-3 py-2.5 rounded-lg border text-sm transition-colors touch-manipulation ${
-                      response === r ? getResponseButtonStyle(r) : 'border-gray-700 bg-gray-800 text-gray-400 hover:border-gray-600 hover:text-gray-300'
+                    className={`text-left px-3 py-3 rounded-lg border text-sm transition-colors touch-manipulation ${
+                      response === r
+                        ? 'border-white bg-white text-black font-semibold'
+                        : 'border-gray-700 bg-gray-950 text-gray-400 hover:border-gray-500 hover:text-gray-200'
                     }`}>{r}</button>
                 ))}
               </div>
@@ -929,7 +950,7 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1">
-      <label className="text-xs text-gray-500 uppercase tracking-wide font-medium">{label}</label>
+      <label className="font-mono text-[10px] text-gray-500 uppercase tracking-widest font-medium">{label}</label>
       {children}
     </div>
   )

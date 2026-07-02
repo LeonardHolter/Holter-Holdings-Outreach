@@ -7,10 +7,10 @@ import type { Company } from '@/types'
 import { DEMO_OUTCOMES } from '@/types'
 
 function demoOutcomeStyle(o: string): string {
-  if (o === 'Won') return 'border-green-600 bg-green-950/50 text-green-300'
-  if (o === 'Lost') return 'border-red-700 bg-red-950/50 text-red-300'
-  if (o === 'No-show') return 'border-orange-600 bg-orange-950/50 text-orange-300'
-  if (o === 'Held') return 'border-blue-600 bg-blue-950/50 text-blue-300'
+  if (o === 'Won') return 'border-white bg-white text-black font-bold'
+  if (o === 'Lost') return 'border-gray-700 bg-gray-900 text-gray-500 line-through'
+  if (o === 'No-show') return 'border-gray-600 bg-gray-900 text-gray-400'
+  if (o === 'Held') return 'border-gray-300 bg-gray-800 text-white'
   return 'border-gray-700 bg-gray-800 text-gray-400'
 }
 
@@ -24,17 +24,25 @@ function NextReachOutBadge({ date }: { date: string | null }) {
   const parsed = parseISO(date)
   const overdue = isPast(parsed) && !isToday(parsed)
   const today   = isToday(parsed)
-  return (
-    <span className={`text-xs font-medium ${overdue ? 'text-red-400' : today ? 'text-yellow-400' : 'text-green-400'}`}>
-      {overdue && '⚠ '}{formatDate(date)}
+  if (overdue) return (
+    <span className="font-mono text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded bg-white text-black whitespace-nowrap">
+      Overdue · {formatDate(date)}
     </span>
+  )
+  if (today) return (
+    <span className="font-mono text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded border border-white text-white whitespace-nowrap">
+      Today
+    </span>
+  )
+  return (
+    <span className="font-mono text-xs text-gray-400 whitespace-nowrap">{formatDate(date)}</span>
   )
 }
 
 function Detail({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <p className="text-xs text-gray-600 uppercase tracking-wide font-medium mb-0.5">{label}</p>
+      <p className="font-mono text-[10px] text-gray-500 uppercase tracking-widest font-medium mb-0.5">{label}</p>
       {children}
     </div>
   )
@@ -121,9 +129,9 @@ export default function DemoCard({ company: initial }: { company: Company }) {
   }
 
   return (
-    <div className={`border rounded-2xl transition-all overflow-hidden ${
-      overdue ? 'bg-gray-900 border-red-900/60'
-      : today ? 'bg-gray-900 border-yellow-800/60'
+    <div className={`border rounded-xl transition-all overflow-hidden ${
+      overdue ? 'bg-gray-900 border-gray-300'
+      : today ? 'bg-gray-900 border-gray-500'
       :         'bg-gray-900 border-gray-800'
     }`}>
 
@@ -132,7 +140,7 @@ export default function DemoCard({ company: initial }: { company: Company }) {
           <h2 className="text-sm font-semibold truncate text-white">{c.company_name}</h2>
           <div className="flex items-center gap-2 mt-0.5">
             {c.state && <span className="text-xs text-gray-500 font-medium">{c.state}</span>}
-            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-green-900/60 text-green-300">Demo booked</span>
+            <span className="font-mono text-[10px] font-medium uppercase tracking-wider px-1.5 py-0.5 rounded border border-gray-600 text-gray-300">Demo booked</span>
             {c.demo_outcome && (
               <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded border ${demoOutcomeStyle(c.demo_outcome)}`}>{c.demo_outcome}</span>
             )}
@@ -245,7 +253,7 @@ export default function DemoCard({ company: initial }: { company: Company }) {
               value={c.next_reach_out ?? ''}
               onChange={e => patch({ next_reach_out: e.target.value || null })}
               disabled={saving}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 [color-scheme:dark] disabled:opacity-40"
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-white [color-scheme:dark] disabled:opacity-40"
             />
           </div>
 
@@ -261,7 +269,7 @@ export default function DemoCard({ company: initial }: { company: Company }) {
                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitNote() } }}
                 rows={1}
                 placeholder="Add a comment..."
-                className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 resize-none focus:outline-none focus:border-blue-600"
+                className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 resize-none focus:outline-none focus:border-white"
               />
               <button
                 onClick={submitNote}

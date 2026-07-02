@@ -153,10 +153,10 @@ export function CompanyTable({ initialData }: Props) {
       size: 90,
       cell: ({ row }) => {
         const r = row.original.revenue
-        if (r != null && r < 15000) return <span className="inline-flex items-center gap-1 text-xs font-medium text-green-400"><span className="w-1.5 h-1.5 rounded-full bg-green-400 shrink-0" />Høy</span>
-        if (r != null && r <= 25000) return <span className="inline-flex items-center gap-1 text-xs font-medium text-yellow-400"><span className="w-1.5 h-1.5 rounded-full bg-yellow-400 shrink-0" />Lav</span>
+        if (r != null && r < 15000) return <span className="inline-flex items-center gap-1 text-xs font-semibold text-white"><span className="w-1.5 h-1.5 rounded-full bg-white shrink-0" />Høy</span>
+        if (r != null && r <= 25000) return <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-300"><span className="w-1.5 h-1.5 rounded-full border border-gray-300 shrink-0" />Lav</span>
         if (r == null) return <span className="inline-flex items-center gap-1 text-xs text-gray-500"><span className="w-1.5 h-1.5 rounded-full bg-gray-600 shrink-0" />Ukjent</span>
-        return <span className="inline-flex items-center gap-1 text-xs text-red-400"><span className="w-1.5 h-1.5 rounded-full bg-red-400 shrink-0" />For stor</span>
+        return <span className="inline-flex items-center gap-1 text-xs text-gray-600"><span className="w-1.5 h-1.5 rounded-full bg-gray-600 shrink-0" />For stor</span>
       },
     }),
     col.accessor('phone_number', {

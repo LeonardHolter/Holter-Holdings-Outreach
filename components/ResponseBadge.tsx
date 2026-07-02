@@ -4,7 +4,7 @@ interface Props {
 
 export function getResponseColor(response: string | null | undefined): string {
   if (!response) return ''
-  if (response === 'Demo booked') return 'text-green-300 bg-green-950/60'
+  if (response === 'Demo booked') return 'text-black bg-white font-bold'
   if (response === 'Not interested' || response === 'Wrong number') return 'text-red-300 bg-red-950/60'
   if (response === 'Call back later') return 'text-yellow-300 bg-yellow-950/60'
   if (response === 'No answer') return 'text-orange-300 bg-orange-950/60'

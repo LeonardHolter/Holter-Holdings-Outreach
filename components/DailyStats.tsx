@@ -321,13 +321,13 @@ export function DailyStats({ rows, events, demoOutcomes }: Props) {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <Kpi label="Today">
           <div className="flex items-end gap-2">
-            <span className={`text-3xl font-bold tabular-nums ${goalMet ? 'text-green-400' : 'text-white'}`}>{todayM.calls}</span>
-            {goalMet && <span className="mb-1 text-green-400 text-sm font-medium">✓</span>}
+            <span className="text-3xl font-bold tabular-nums text-white">{todayM.calls}</span>
+            {goalMet && <span className="mb-1 text-white text-sm font-medium">✓ goal</span>}
           </div>
           {!goalMet && (
             <div className="mt-1">
               <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
-                <div className="h-full bg-green-500 rounded-full" style={{ width: `${Math.min(100, (todayM.calls / GOAL) * 100)}%` }} />
+                <div className="h-full bg-white rounded-full" style={{ width: `${Math.min(100, (todayM.calls / GOAL) * 100)}%` }} />
               </div>
               <span className="text-xs text-gray-600 mt-0.5 block">{Math.max(0, GOAL - todayM.calls)} to go</span>
             </div>
@@ -519,7 +519,7 @@ export function DailyStats({ rows, events, demoOutcomes }: Props) {
                 <div key={t.tier} className="flex items-center gap-3 text-sm">
                   <span className="w-16 text-gray-400 text-xs shrink-0">{t.tier}</span>
                   <div className="flex-1 h-2 bg-gray-800 rounded-full overflow-hidden">
-                    <div className="h-full bg-blue-500 rounded-full" style={{ width: `${Math.min(100, (t.demoRate ?? 0) * 100)}%` }} />
+                    <div className="h-full bg-white rounded-full" style={{ width: `${Math.min(100, (t.demoRate ?? 0) * 100)}%` }} />
                   </div>
                   <span className="text-xs text-gray-500 w-24 text-right tabular-nums">{t.demos}/{t.dials} · {t.demoRate != null ? pct(t.demoRate) : '—'}</span>
                 </div>
@@ -538,7 +538,7 @@ export function DailyStats({ rows, events, demoOutcomes }: Props) {
                 <div key={h.hour} className="flex items-center gap-3 text-sm">
                   <span className="w-12 text-gray-400 text-xs shrink-0 tabular-nums">{String(h.hour).padStart(2, '0')}:00</span>
                   <div className="flex-1 h-2 bg-gray-800 rounded-full overflow-hidden">
-                    <div className="h-full bg-green-500 rounded-full" style={{ width: `${h.pickupRate * 100}%` }} />
+                    <div className="h-full bg-white rounded-full" style={{ width: `${h.pickupRate * 100}%` }} />
                   </div>
                   <span className="text-xs text-gray-500 w-24 text-right tabular-nums">{h.dials} dials · {pct(h.pickupRate)}</span>
                 </div>
@@ -638,7 +638,7 @@ export function DailyStats({ rows, events, demoOutcomes }: Props) {
                 onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) addDayNote() }}
                 placeholder="What tactic did you use today? Anything worth remembering…"
                 rows={2}
-                className="flex-1 bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-500 resize-y"
+                className="flex-1 bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-white resize-y"
               />
               <button
                 onClick={addDayNote}
