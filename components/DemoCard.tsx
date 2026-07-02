@@ -55,6 +55,14 @@ interface Note {
   created_at: string
 }
 
+interface Recording {
+  id: string
+  caller_name: string | null
+  duration_seconds: number | null
+  mime_type: string
+  called_at: string
+}
+
 export default function DemoCard({ company: initial }: { company: Company }) {
   const [c, setC]           = useState(initial)
   const [saving, setSaving] = useState(false)
@@ -66,6 +74,10 @@ export default function DemoCard({ company: initial }: { company: Company }) {
   const [newNote, setNewNote] = useState('')
   const [submittingNote, setSubmittingNote] = useState(false)
   const noteInputRef = useRef<HTMLTextAreaElement>(null)
+
+  const [recordings, setRecordings] = useState<Recording[]>([])
+  const [recordingsLoaded, setRecordingsLoaded] = useState(false)
+  const [loadingRecordings, setLoadingRecordings] = useState(false)
 
   const loadNotes = useCallback(async () => {
     setLoadingNotes(true)
@@ -81,9 +93,27 @@ export default function DemoCard({ company: initial }: { company: Company }) {
     }
   }, [c.id])
 
+  const loadRecordings = useCallback(async () => {
+    setLoadingRecordings(true)
+    try {
+      const res = await fetch(`/api/companies/${c.id}/recordings`)
+      if (!res.ok) throw new Error()
+      setRecordings(await res.json())
+    } catch {
+      toast.error('Failed to load recordings')
+    } finally {
+      setLoadingRecordings(false)
+      setRecordingsLoaded(true)
+    }
+  }, [c.id])
+
   useEffect(() => {
     if (expanded && !notesLoaded) loadNotes()
   }, [expanded, notesLoaded, loadNotes])
+
+  useEffect(() => {
+    if (expanded && !recordingsLoaded) loadRecordings()
+  }, [expanded, recordingsLoaded, loadRecordings])
 
   const nextDate = c.next_reach_out ? parseISO(c.next_reach_out) : null
   const overdue  = nextDate && isPast(nextDate) && !isToday(nextDate)
@@ -225,6 +255,37 @@ export default function DemoCard({ company: initial }: { company: Company }) {
             <div className="pt-1 border-t border-gray-800">
               <p className="text-xs text-gray-500 uppercase tracking-wide font-medium mb-1">Notes</p>
               <p className="text-sm text-gray-300 whitespace-pre-wrap leading-relaxed">{c.notes}</p>
+            </div>
+          )}
+
+          {/* Recording from the demo call */}
+          {recordings.length > 0 && (
+            <div className="pt-2 border-t border-gray-800">
+              <p className="text-xs text-gray-500 uppercase tracking-wide font-medium mb-2">Recording</p>
+              <div className="space-y-2">
+                {recordings.map(rec => (
+                  <div key={rec.id} className="bg-gray-800/50 border border-gray-700 rounded-lg p-3 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-medium text-gray-300">{rec.caller_name ?? 'Unknown'}</span>
+                      <span className="text-[10px] text-gray-600">{format(parseISO(rec.called_at), 'MMM d, h:mm a')}</span>
+                    </div>
+                    {rec.duration_seconds && (
+                      <span className="text-xs text-gray-500">{Math.round(rec.duration_seconds / 60)}m {rec.duration_seconds % 60}s</span>
+                    )}
+                    <audio
+                      controls
+                      src={`/api/recordings/${rec.id}/audio`}
+                      className="w-full h-6 rounded bg-gray-900 [&::-webkit-media-controls-panel]:bg-gray-800"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {loadingRecordings && (
+            <div className="pt-2 border-t border-gray-800">
+              <p className="text-xs text-gray-500">Loading recordings...</p>
             </div>
           )}
 
