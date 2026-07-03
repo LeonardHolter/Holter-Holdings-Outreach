@@ -53,10 +53,11 @@ function callbackMatchesNow(c: Company): boolean {
 // priority. Mirrors PRIORITY_ORDER_BY in lib/db.ts.
 function revenuePriority(c: Company): number {
   const r = c.revenue
-  if (r != null && r < 15000) return 1   // under 15 MNOK — real shop, real pain
-  if (r != null && r <= 25000) return 2  // 15–25 MNOK — lower priority
-  if (r == null) return 3                // unknown revenue
-  return 4                               // over 25 MNOK — too big, skip
+  if (r != null && r >= 10000 && r <= 20000) return 1  // 10–20 MNOK — sweet spot, call first
+  if (r != null && r < 10000) return 2                 // under 10 MNOK — real shop, real pain
+  if (r != null && r <= 25000) return 3                // 20–25 MNOK — lower priority
+  if (r == null) return 4                              // unknown revenue
+  return 5                                             // over 25 MNOK — too big, skip
 }
 
 function sortQueueByCallback(q: Company[]): Company[] {
