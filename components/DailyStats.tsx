@@ -92,13 +92,17 @@ function aggregateEvents(events: CallEvent[]): EventMetrics {
   }
 }
 
-const REVENUE_TIERS = ['Under 15M', '15–25M', 'Over 25M', 'Unknown'] as const
+const REVENUE_TIERS = ['Under 1M', '1–5M', '5–10M', '10–15M', '15–25M', 'Over 25M', 'Unknown'] as const
 type RevenueTier = (typeof REVENUE_TIERS)[number]
 
-// Mirrors the priority tiers in lib/db.ts PRIORITY_ORDER_BY.
+// Revenue is stored in thousands (15000 = 15M NOK). Finer-grained than the
+// lib/db.ts PRIORITY_ORDER_BY tiers so the sub-15M bulk of leads isn't one bucket.
 function revenueTier(rev: number | null): RevenueTier {
   if (rev == null) return 'Unknown'
-  if (rev < 15000) return 'Under 15M'
+  if (rev < 1000) return 'Under 1M'
+  if (rev < 5000) return '1–5M'
+  if (rev < 10000) return '5–10M'
+  if (rev < 15000) return '10–15M'
   if (rev <= 25000) return '15–25M'
   return 'Over 25M'
 }
