@@ -351,8 +351,8 @@ export function DailyStats({ rows, events, demoOutcomes }: Props) {
           <span className="text-3xl font-bold tabular-nums text-white">{weekM.calls}</span>
           <span className="text-xs text-gray-600">{pct(weekM.pickupRate)} pickup</span>
         </Kpi>
-        <Kpi label="Not interested (all)">
-          <span className="text-3xl font-bold tabular-nums text-red-400">{pct(allM.notInterestedRate)}</span>
+        <Kpi label="Demo rate (all)">
+          <span className="text-3xl font-bold tabular-nums text-green-400">{allM.answered ? pct1(allM.demoRate) : '—'}</span>
           <span className="text-xs text-gray-600">{allM.demos} demos booked</span>
         </Kpi>
       </div>
