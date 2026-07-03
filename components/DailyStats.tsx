@@ -53,7 +53,7 @@ function aggregate(rows: StatRow[]): Metrics {
   return {
     calls, answered, noAnswer, demos, notInterested, callback, wrong, notNeeded,
     pickupRate: calls ? answered / calls : 0,
-    demoRate: calls ? demos / calls : 0,
+    demoRate: answered ? demos / answered : 0,
     notInterestedRate: calls ? notInterested / calls : 0,
   }
 }
@@ -393,7 +393,7 @@ export function DailyStats({ rows, events, demoOutcomes }: Props) {
                     <td className="text-right tabular-nums text-white py-2.5 px-3">{m.calls}</td>
                     <td className="text-right tabular-nums text-gray-300 py-2.5 px-3">{m.calls ? pct(m.pickupRate) : '—'}</td>
                     <td className="text-right tabular-nums text-green-400 py-2.5 px-3">{m.demos}</td>
-                    <td className="text-right tabular-nums text-gray-300 py-2.5 px-3">{m.calls ? pct(m.demoRate) : '—'}</td>
+                    <td className="text-right tabular-nums text-gray-300 py-2.5 px-3">{m.answered ? pct(m.demoRate) : '—'}</td>
                     <td className="text-right tabular-nums text-gray-500 py-2.5 px-3">{m.noAnswer}</td>
                     <td className="text-right tabular-nums text-gray-500 py-2.5 px-3">{m.notInterested}</td>
                     <td className="text-right tabular-nums text-red-400/80 py-2.5 px-3">{m.calls ? pct(m.notInterestedRate) : '—'}</td>
@@ -409,7 +409,7 @@ export function DailyStats({ rows, events, demoOutcomes }: Props) {
                     <td className="text-right tabular-nums text-white py-2.5 px-3">{m.calls}</td>
                     <td className="text-right tabular-nums text-gray-200 py-2.5 px-3">{m.calls ? pct(m.pickupRate) : '—'}</td>
                     <td className="text-right tabular-nums text-green-400 py-2.5 px-3">{m.demos}</td>
-                    <td className="text-right tabular-nums text-gray-200 py-2.5 px-3">{m.calls ? pct(m.demoRate) : '—'}</td>
+                    <td className="text-right tabular-nums text-gray-200 py-2.5 px-3">{m.answered ? pct(m.demoRate) : '—'}</td>
                     <td className="text-right tabular-nums text-gray-500 py-2.5 px-3">{m.noAnswer}</td>
                     <td className="text-right tabular-nums text-gray-500 py-2.5 px-3">{m.notInterested}</td>
                     <td className="text-right tabular-nums text-red-400/80 py-2.5 px-3">{m.calls ? pct(m.notInterestedRate) : '—'}</td>
