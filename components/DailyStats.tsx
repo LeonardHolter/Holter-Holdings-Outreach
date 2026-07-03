@@ -59,6 +59,9 @@ function aggregate(rows: StatRow[]): Metrics {
 }
 
 const pct = (x: number) => `${Math.round(x * 100)}%`
+// One-decimal variant, for low-magnitude rates (e.g. Demo %) where rounding
+// to a whole number hides the difference between e.g. 1.2% and 1.8%.
+const pct1 = (x: number) => `${(x * 100).toFixed(1)}%`
 
 // --- Event-log-derived metrics (call_events) --------------------------------
 // Unlike StatRow (a company's latest state), call_events has one row per
@@ -393,7 +396,7 @@ export function DailyStats({ rows, events, demoOutcomes }: Props) {
                     <td className="text-right tabular-nums text-white py-2.5 px-3">{m.calls}</td>
                     <td className="text-right tabular-nums text-gray-300 py-2.5 px-3">{m.calls ? pct(m.pickupRate) : '—'}</td>
                     <td className="text-right tabular-nums text-green-400 py-2.5 px-3">{m.demos}</td>
-                    <td className="text-right tabular-nums text-gray-300 py-2.5 px-3">{m.answered ? pct(m.demoRate) : '—'}</td>
+                    <td className="text-right tabular-nums text-gray-300 py-2.5 px-3">{m.answered ? pct1(m.demoRate) : '—'}</td>
                     <td className="text-right tabular-nums text-gray-500 py-2.5 px-3">{m.noAnswer}</td>
                     <td className="text-right tabular-nums text-gray-500 py-2.5 px-3">{m.notInterested}</td>
                     <td className="text-right tabular-nums text-red-400/80 py-2.5 px-3">{m.calls ? pct(m.notInterestedRate) : '—'}</td>
@@ -409,7 +412,7 @@ export function DailyStats({ rows, events, demoOutcomes }: Props) {
                     <td className="text-right tabular-nums text-white py-2.5 px-3">{m.calls}</td>
                     <td className="text-right tabular-nums text-gray-200 py-2.5 px-3">{m.calls ? pct(m.pickupRate) : '—'}</td>
                     <td className="text-right tabular-nums text-green-400 py-2.5 px-3">{m.demos}</td>
-                    <td className="text-right tabular-nums text-gray-200 py-2.5 px-3">{m.answered ? pct(m.demoRate) : '—'}</td>
+                    <td className="text-right tabular-nums text-gray-200 py-2.5 px-3">{m.answered ? pct1(m.demoRate) : '—'}</td>
                     <td className="text-right tabular-nums text-gray-500 py-2.5 px-3">{m.noAnswer}</td>
                     <td className="text-right tabular-nums text-gray-500 py-2.5 px-3">{m.notInterested}</td>
                     <td className="text-right tabular-nums text-red-400/80 py-2.5 px-3">{m.calls ? pct(m.notInterestedRate) : '—'}</td>
