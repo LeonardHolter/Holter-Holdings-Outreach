@@ -17,6 +17,7 @@ export async function GET(
     `SELECT id, caller_name, duration_seconds, mime_type, called_at
      FROM call_recordings
      WHERE company_id = $1 AND recording_data IS NOT NULL
+       AND (duration_seconds IS NULL OR duration_seconds >= 60)
      ORDER BY called_at DESC`,
     [id]
   )

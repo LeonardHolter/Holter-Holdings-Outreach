@@ -9,7 +9,7 @@ export async function GET(
   
 
   const rows = await query(
-    'SELECT id, call_sid, caller_name, recording_url, duration_seconds, called_at, called_by FROM call_recordings WHERE company_id = $1 ORDER BY called_at DESC LIMIT 20',
+    'SELECT id, call_sid, caller_name, recording_url, duration_seconds, called_at, called_by FROM call_recordings WHERE company_id = $1 AND (duration_seconds IS NULL OR duration_seconds >= 60) ORDER BY called_at DESC LIMIT 20',
     [companyId]
   )
 

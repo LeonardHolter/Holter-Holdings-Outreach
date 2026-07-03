@@ -49,6 +49,7 @@ export async function GET() {
     FROM call_recordings r
     LEFT JOIN companies c ON c.id = r.company_id
     WHERE r.recording_data IS NOT NULL
+      AND (r.duration_seconds IS NULL OR r.duration_seconds >= 60)
     ORDER BY r.called_at DESC
     LIMIT 200
   `)
