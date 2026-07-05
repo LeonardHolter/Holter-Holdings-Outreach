@@ -109,3 +109,15 @@ export const DEMO_OUTCOMES = [
   'Won',
   'Lost',
 ]
+
+// Follow-up cadence after a demo is booked. Offsets are days after the
+// booking call ("same day" = day of booking).
+export const DEMO_TOUCHPOINTS = [
+  { key: 'same_day',  label: 'Same day',  from: 0,  to: 0  },
+  { key: 'day_2',     label: 'Day 2',     from: 2,  to: 2  },
+  { key: 'day_4',     label: 'Day 4',     from: 4,  to: 4  },
+  { key: 'day_7',     label: 'Day 7',     from: 7,  to: 7  },
+  { key: 'day_10_12', label: 'Day 10–12', from: 10, to: 12 },
+] as const
+
+export type TouchpointKey = (typeof DEMO_TOUCHPOINTS)[number]['key']

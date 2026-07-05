@@ -131,3 +131,14 @@ CREATE TABLE IF NOT EXISTS call_events (
 );
 CREATE INDEX IF NOT EXISTS call_events_created_at_idx ON call_events(created_at);
 CREATE INDEX IF NOT EXISTS call_events_company_id_idx ON call_events(company_id);
+
+-- Post-booking follow-up cadence per demo: same day, day 2, day 4, day 7,
+-- day 10–12 (days after the booking call). One row per completed touchpoint.
+-- Also auto-created on demand by /api/companies/[id]/touchpoints.
+CREATE TABLE IF NOT EXISTS demo_touchpoints (
+  company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  touchpoint TEXT NOT NULL,   -- 'same_day' | 'day_2' | 'day_4' | 'day_7' | 'day_10_12'
+  caller_name TEXT,
+  completed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (company_id, touchpoint)
+);

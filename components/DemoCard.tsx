@@ -1,10 +1,10 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { format, parseISO, isPast, isToday } from 'date-fns'
+import { addDays, format, parseISO, isPast, isToday, startOfDay } from 'date-fns'
 import { toast } from 'sonner'
 import type { Company } from '@/types'
-import { DEMO_OUTCOMES } from '@/types'
+import { DEMO_OUTCOMES, DEMO_TOUCHPOINTS } from '@/types'
 
 function demoOutcomeStyle(o: string): string {
   if (o === 'Won') return 'border-white bg-white text-black font-bold'
@@ -64,12 +64,14 @@ interface Recording {
 }
 
 // Company row joined with its booking-call recording (latest playable
-// recording for the company, resolved server-side on the demos page).
+// recording for the company) and the booking date, resolved server-side
+// on the demos page.
 export interface DemoCompany extends Company {
   recording_id: string | null
   recording_caller: string | null
   recording_duration: number | null
   recording_at: string | null
+  booked_at: string | null
 }
 
 function fmtDuration(s: number | null): string | null {
@@ -77,7 +79,13 @@ function fmtDuration(s: number | null): string | null {
   return `${Math.floor(s / 60)}m ${s % 60}s`
 }
 
-export default function DemoCard({ company: initial }: { company: DemoCompany }) {
+export default function DemoCard({
+  company: initial,
+  touchpoints: initialTouchpoints = {},
+}: {
+  company: DemoCompany
+  touchpoints?: Record<string, string>
+}) {
   const [c, setC]           = useState(initial)
   const [saving, setSaving] = useState(false)
   const [expanded, setExpanded] = useState(false)
@@ -92,6 +100,50 @@ export default function DemoCard({ company: initial }: { company: DemoCompany })
   const [recordings, setRecordings] = useState<Recording[]>([])
   const [recordingsLoaded, setRecordingsLoaded] = useState(false)
   const [loadingRecordings, setLoadingRecordings] = useState(false)
+
+  // Touchpoint cadence — key → completed_at ISO timestamp
+  const [tps, setTps] = useState<Record<string, string>>(initialTouchpoints)
+  const [tpSaving, setTpSaving] = useState<string | null>(null)
+
+  async function toggleTouchpoint(key: string) {
+    const wasDone = !!tps[key]
+    const prev = tps
+    setTpSaving(key)
+    setTps(cur => {
+      const next = { ...cur }
+      if (wasDone) delete next[key]
+      else next[key] = new Date().toISOString()
+      return next
+    })
+    try {
+      const caller = typeof window !== 'undefined' ? localStorage.getItem('sessionCaller') : null
+      const res = await fetch(`/api/companies/${c.id}/touchpoints`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ touchpoint: key, done: !wasDone, caller_name: caller }),
+      })
+      if (!res.ok) throw new Error()
+    } catch {
+      setTps(prev)
+      toast.error('Failed to save touchpoint')
+    } finally {
+      setTpSaving(null)
+    }
+  }
+
+  // Due window for a touchpoint, anchored to the booking call (falls back to
+  // the last call date for demos booked before call events existed).
+  const anchor = c.booked_at ?? c.last_reach_out
+  function tpWindow(from: number, to: number): { label: string; open: boolean } | null {
+    if (!anchor) return null
+    const start = startOfDay(addDays(parseISO(anchor), from))
+    const end = startOfDay(addDays(parseISO(anchor), to))
+    const label = from === to
+      ? format(start, 'MMM d')
+      : `${format(start, 'MMM d')}–${format(end, 'd')}`
+    // "open" = the window has started (touchpoint is due or overdue)
+    return { label, open: isToday(start) || isPast(start) }
+  }
 
   const loadNotes = useCallback(async () => {
     setLoadingNotes(true)
@@ -220,6 +272,36 @@ export default function DemoCard({ company: initial }: { company: DemoCompany })
           </span>
         </div>
       )}
+
+      {/* Touchpoint cadence — done = filled, due/overdue = white outline */}
+      <div className="px-4 pb-4">
+        <p className="font-mono text-[10px] text-gray-500 uppercase tracking-widest font-medium mb-1.5">Touchpoints</p>
+        <div className="grid grid-cols-5 gap-1.5">
+          {DEMO_TOUCHPOINTS.map(tp => {
+            const doneAt = tps[tp.key]
+            const win = tpWindow(tp.from, tp.to)
+            const due = !doneAt && !!win?.open
+            return (
+              <button
+                key={tp.key}
+                disabled={tpSaving === tp.key}
+                onClick={() => toggleTouchpoint(tp.key)}
+                title={doneAt ? 'Done — click to undo' : 'Click to mark done'}
+                className={`rounded-lg border px-1 py-1.5 text-center transition-colors disabled:opacity-40 ${
+                  doneAt ? 'border-white bg-white text-black'
+                  : due  ? 'border-white text-white'
+                  :        'border-gray-700 text-gray-500 hover:border-gray-500 hover:text-gray-300'
+                }`}
+              >
+                <span className="block font-mono text-[9px] font-bold uppercase tracking-wider whitespace-nowrap">{tp.label}</span>
+                <span className={`block text-[10px] mt-0.5 tabular-nums ${doneAt ? 'text-gray-600' : due ? 'text-gray-300' : 'text-gray-600'}`}>
+                  {doneAt ? `✓ ${format(parseISO(doneAt), 'MMM d')}` : win?.label ?? '—'}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
 
       {expanded && (
         <div className="px-5 pb-5 space-y-4 border-t border-gray-800">

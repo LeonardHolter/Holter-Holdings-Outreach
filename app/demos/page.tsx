@@ -6,14 +6,17 @@ import DemoCard, { type DemoCompany } from '@/components/DemoCard'
 
 async function fetchBookedDemos(): Promise<DemoCompany[]> {
   // Resolved demos (Won/Lost) drop off the active list once an outcome is set.
-  // Each demo carries its booking-call recording: the most recent playable
-  // recording for the company (sub-minute clips are hidden app-wide).
+  // Each demo carries its booking-call recording (the most recent playable
+  // recording; sub-minute clips are hidden app-wide) and the date the demo
+  // was booked (latest 'Demo booked' call event) to anchor the touchpoint
+  // cadence.
   const rows = await query(
     `SELECT c.*,
             r.id          AS recording_id,
             r.caller_name AS recording_caller,
             r.duration_seconds AS recording_duration,
-            r.called_at   AS recording_at
+            r.called_at   AS recording_at,
+            b.booked_at   AS booked_at
      FROM companies c
      LEFT JOIN LATERAL (
        SELECT id, caller_name, duration_seconds, called_at
@@ -24,6 +27,11 @@ async function fetchBookedDemos(): Promise<DemoCompany[]> {
        ORDER BY called_at DESC
        LIMIT 1
      ) r ON true
+     LEFT JOIN LATERAL (
+       SELECT MAX(created_at) AS booked_at
+       FROM call_events
+       WHERE company_id = c.id AND response = 'Demo booked'
+     ) b ON true
      WHERE c.reach_out_response = 'Demo booked'
        AND (c.demo_outcome IS NULL OR c.demo_outcome NOT IN ('Won', 'Lost'))
      ORDER BY c.next_reach_out ASC NULLS LAST`
@@ -31,8 +39,31 @@ async function fetchBookedDemos(): Promise<DemoCompany[]> {
   return rows as DemoCompany[]
 }
 
+// Completed touchpoints for the listed demos, keyed by company id.
+// The table is created lazily by the touchpoints API — tolerate it not
+// existing yet so the page never breaks.
+async function fetchTouchpoints(companyIds: string[]): Promise<Record<string, Record<string, string>>> {
+  if (companyIds.length === 0) return {}
+  try {
+    const rows = await query(
+      `SELECT company_id, touchpoint, completed_at
+       FROM demo_touchpoints
+       WHERE company_id = ANY($1::uuid[])`,
+      [companyIds]
+    )
+    const map: Record<string, Record<string, string>> = {}
+    for (const r of rows as { company_id: string; touchpoint: string; completed_at: string }[]) {
+      ;(map[r.company_id] ??= {})[r.touchpoint] = r.completed_at
+    }
+    return map
+  } catch {
+    return {}
+  }
+}
+
 export default async function DemosPage() {
   const demos = await fetchBookedDemos()
+  const touchpoints = await fetchTouchpoints(demos.map(d => d.id))
 
   return (
     <div className="flex flex-col h-[100dvh] overflow-hidden bg-gray-950">
@@ -68,7 +99,7 @@ export default async function DemosPage() {
           ) : (
             <div className="space-y-3">
               {demos.map(c => (
-                <DemoCard key={c.id} company={c} />
+                <DemoCard key={c.id} company={c} touchpoints={touchpoints[c.id] ?? {}} />
               ))}
             </div>
           )}
