@@ -36,7 +36,14 @@ async function fetchBookedDemos(): Promise<DemoCompany[]> {
        AND (c.demo_outcome IS NULL OR c.demo_outcome NOT IN ('Won', 'Lost'))
      ORDER BY c.next_reach_out ASC NULLS LAST`
   )
-  return rows as DemoCompany[]
+  // pg returns TIMESTAMPTZ columns as JS Date objects — normalize to ISO
+  // strings so client components can parse them safely.
+  const toIso = (v: unknown) => (v instanceof Date ? v.toISOString() : (v as string | null))
+  return (rows as Record<string, unknown>[]).map(r => ({
+    ...r,
+    booked_at: toIso(r.booked_at),
+    recording_at: toIso(r.recording_at),
+  })) as DemoCompany[]
 }
 
 // Completed touchpoints for the listed demos, keyed by company id.
@@ -52,8 +59,9 @@ async function fetchTouchpoints(companyIds: string[]): Promise<Record<string, Re
       [companyIds]
     )
     const map: Record<string, Record<string, string>> = {}
-    for (const r of rows as { company_id: string; touchpoint: string; completed_at: string }[]) {
-      ;(map[r.company_id] ??= {})[r.touchpoint] = r.completed_at
+    for (const r of rows as { company_id: string; touchpoint: string; completed_at: string | Date }[]) {
+      ;(map[r.company_id] ??= {})[r.touchpoint] =
+        r.completed_at instanceof Date ? r.completed_at.toISOString() : r.completed_at
     }
     return map
   } catch {

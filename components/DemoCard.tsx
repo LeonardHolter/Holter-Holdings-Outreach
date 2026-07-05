@@ -19,6 +19,15 @@ function formatDate(d: string | null) {
   try { return format(parseISO(d), 'MMM d, yyyy') } catch { return d }
 }
 
+// Tolerant date parser: handles ISO strings, date-only strings, and Date
+// objects (pg returns TIMESTAMPTZ as Date). Returns null instead of throwing
+// so a bad value can never crash the page.
+function safeDate(v: string | Date | null | undefined): Date | null {
+  if (!v) return null
+  const d = v instanceof Date ? v : typeof v === 'string' && !v.includes('T') ? parseISO(v) : new Date(v)
+  return isNaN(d.getTime()) ? null : d
+}
+
 function NextReachOutBadge({ date }: { date: string | null }) {
   if (!date) return <span className="text-gray-600 text-sm">—</span>
   const parsed = parseISO(date)
@@ -133,11 +142,11 @@ export default function DemoCard({
 
   // Due window for a touchpoint, anchored to the booking call (falls back to
   // the last call date for demos booked before call events existed).
-  const anchor = c.booked_at ?? c.last_reach_out
+  const anchor = safeDate(c.booked_at) ?? safeDate(c.last_reach_out)
   function tpWindow(from: number, to: number): { label: string; open: boolean } | null {
     if (!anchor) return null
-    const start = startOfDay(addDays(parseISO(anchor), from))
-    const end = startOfDay(addDays(parseISO(anchor), to))
+    const start = startOfDay(addDays(anchor, from))
+    const end = startOfDay(addDays(anchor, to))
     const label = from === to
       ? format(start, 'MMM d')
       : `${format(start, 'MMM d')}–${format(end, 'd')}`
@@ -295,7 +304,9 @@ export default function DemoCard({
               >
                 <span className="block font-mono text-[9px] font-bold uppercase tracking-wider whitespace-nowrap">{tp.label}</span>
                 <span className={`block text-[10px] mt-0.5 tabular-nums ${doneAt ? 'text-gray-600' : due ? 'text-gray-300' : 'text-gray-600'}`}>
-                  {doneAt ? `✓ ${format(parseISO(doneAt), 'MMM d')}` : win?.label ?? '—'}
+                  {doneAt
+                    ? `✓ ${safeDate(doneAt) ? format(safeDate(doneAt)!, 'MMM d') : ''}`.trim()
+                    : win?.label ?? '—'}
                 </span>
               </button>
             )
