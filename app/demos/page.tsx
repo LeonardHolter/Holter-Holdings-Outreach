@@ -1,19 +1,34 @@
 export const dynamic = 'force-dynamic'
 
 import { query } from '@/lib/db'
-import type { Company } from '@/types'
 import { Nav } from '@/components/Nav'
-import DemoCard from '@/components/DemoCard'
+import DemoCard, { type DemoCompany } from '@/components/DemoCard'
 
-async function fetchBookedDemos(): Promise<Company[]> {
+async function fetchBookedDemos(): Promise<DemoCompany[]> {
   // Resolved demos (Won/Lost) drop off the active list once an outcome is set.
+  // Each demo carries its booking-call recording: the most recent playable
+  // recording for the company (sub-minute clips are hidden app-wide).
   const rows = await query(
-    `SELECT * FROM companies
-     WHERE reach_out_response = 'Demo booked'
-       AND (demo_outcome IS NULL OR demo_outcome NOT IN ('Won', 'Lost'))
-     ORDER BY next_reach_out ASC NULLS LAST`
+    `SELECT c.*,
+            r.id          AS recording_id,
+            r.caller_name AS recording_caller,
+            r.duration_seconds AS recording_duration,
+            r.called_at   AS recording_at
+     FROM companies c
+     LEFT JOIN LATERAL (
+       SELECT id, caller_name, duration_seconds, called_at
+       FROM call_recordings
+       WHERE company_id = c.id
+         AND recording_data IS NOT NULL
+         AND (duration_seconds IS NULL OR duration_seconds >= 60)
+       ORDER BY called_at DESC
+       LIMIT 1
+     ) r ON true
+     WHERE c.reach_out_response = 'Demo booked'
+       AND (c.demo_outcome IS NULL OR c.demo_outcome NOT IN ('Won', 'Lost'))
+     ORDER BY c.next_reach_out ASC NULLS LAST`
   )
-  return rows as Company[]
+  return rows as DemoCompany[]
 }
 
 export default async function DemosPage() {

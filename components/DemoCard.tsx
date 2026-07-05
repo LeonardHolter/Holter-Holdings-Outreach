@@ -63,7 +63,21 @@ interface Recording {
   called_at: string
 }
 
-export default function DemoCard({ company: initial }: { company: Company }) {
+// Company row joined with its booking-call recording (latest playable
+// recording for the company, resolved server-side on the demos page).
+export interface DemoCompany extends Company {
+  recording_id: string | null
+  recording_caller: string | null
+  recording_duration: number | null
+  recording_at: string | null
+}
+
+function fmtDuration(s: number | null): string | null {
+  if (s == null) return null
+  return `${Math.floor(s / 60)}m ${s % 60}s`
+}
+
+export default function DemoCard({ company: initial }: { company: DemoCompany }) {
   const [c, setC]           = useState(initial)
   const [saving, setSaving] = useState(false)
   const [expanded, setExpanded] = useState(false)
@@ -187,6 +201,26 @@ export default function DemoCard({ company: initial }: { company: Company }) {
         </button>
       </div>
 
+      {/* Booking-call recording — attached to every card */}
+      {c.recording_id && (
+        <div className="flex items-center gap-3 px-4 pb-4 -mt-1">
+          <span className="shrink-0 flex items-center gap-1.5 font-mono text-[10px] font-bold uppercase tracking-widest text-gray-400">
+            <span className="w-2 h-2 rounded-full border-2 border-current" />
+            Rec
+          </span>
+          <audio
+            controls
+            preload="none"
+            src={`/api/recordings/${c.recording_id}/audio`}
+            className="flex-1 min-w-0 h-8"
+          />
+          <span className="shrink-0 font-mono text-[10px] text-gray-500 whitespace-nowrap">
+            {c.recording_caller ?? '—'}
+            {c.recording_duration != null ? ` · ${fmtDuration(c.recording_duration)}` : ''}
+          </span>
+        </div>
+      )}
+
       {expanded && (
         <div className="px-5 pb-5 space-y-4 border-t border-gray-800">
           <div className="grid grid-cols-2 gap-x-4 gap-y-3 pt-4">
@@ -258,10 +292,10 @@ export default function DemoCard({ company: initial }: { company: Company }) {
             </div>
           )}
 
-          {/* Recording from the demo call */}
+          {/* Full recording history for this company */}
           {recordings.length > 0 && (
             <div className="pt-2 border-t border-gray-800">
-              <p className="text-xs text-gray-500 uppercase tracking-wide font-medium mb-2">Recording</p>
+              <p className="text-xs text-gray-500 uppercase tracking-wide font-medium mb-2">All recordings</p>
               <div className="space-y-2">
                 {recordings.map(rec => (
                   <div key={rec.id} className="bg-gray-800/50 border border-gray-700 rounded-lg p-3 space-y-2">
