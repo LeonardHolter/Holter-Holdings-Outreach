@@ -325,7 +325,7 @@ export function DailyStats({ rows, events, demoOutcomes }: Props) {
       </div>
 
       {/* KPI row */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
         <Kpi label="Today">
           <div className="flex items-end gap-2">
             <span className="text-3xl font-bold tabular-nums text-white">{todayM.calls}</span>
@@ -354,6 +354,10 @@ export function DailyStats({ rows, events, demoOutcomes }: Props) {
         <Kpi label="Demo rate (all)">
           <span className="text-3xl font-bold tabular-nums text-green-400">{allM.answered ? pct1(allM.demoRate) : '—'}</span>
           <span className="text-xs text-gray-600">{allM.demos} demos booked</span>
+        </Kpi>
+        <Kpi label="Demo won rate (all)">
+          <span className="text-3xl font-bold tabular-nums text-green-400">{demoStats.winRate != null ? pct(demoStats.winRate) : '—'}</span>
+          <span className="text-xs text-gray-600">{demoStats.won} of {demoStats.won + demoStats.lost} decided</span>
         </Kpi>
       </div>
 
