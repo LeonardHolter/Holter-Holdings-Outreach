@@ -31,12 +31,14 @@ interface Metrics {
   answered: number
   noAnswer: number
   demos: number
+  won: number
   notInterested: number
   callback: number
   wrong: number
   notNeeded: number
   pickupRate: number
   demoRate: number
+  wonRate: number
   notInterestedRate: number
 }
 
@@ -45,15 +47,17 @@ function aggregate(rows: StatRow[]): Metrics {
   const calls = rows.reduce((s, r) => s + r.n, 0)
   const noAnswer = sum(r => r.reach_out_response === 'No answer')
   const demos = sum(r => r.reach_out_response === 'Demo booked')
+  const won = sum(r => r.demo_outcome === 'Won')
   const notInterested = sum(r => r.reach_out_response === 'Not interested')
   const callback = sum(r => r.reach_out_response === 'Call back later')
   const wrong = sum(r => r.reach_out_response === 'Wrong number')
   const notNeeded = sum(r => r.reach_out_response === 'Not needed')
   const answered = calls - noAnswer
   return {
-    calls, answered, noAnswer, demos, notInterested, callback, wrong, notNeeded,
+    calls, answered, noAnswer, demos, won, notInterested, callback, wrong, notNeeded,
     pickupRate: calls ? answered / calls : 0,
     demoRate: answered ? demos / answered : 0,
+    wonRate: answered ? won / answered : 0,
     notInterestedRate: calls ? notInterested / calls : 0,
   }
 }
@@ -384,6 +388,7 @@ export function DailyStats({ rows, events, demoOutcomes }: Props) {
                 <th className="text-right font-semibold py-2 px-3">Pickup&nbsp;%</th>
                 <th className="text-right font-semibold py-2 px-3">Demos</th>
                 <th className="text-right font-semibold py-2 px-3">Demo&nbsp;%</th>
+                <th className="text-right font-semibold py-2 px-3">Won&nbsp;%</th>
                 <th className="text-right font-semibold py-2 px-3">No&nbsp;answer</th>
                 <th className="text-right font-semibold py-2 px-3">Not&nbsp;int.</th>
                 <th className="text-right font-semibold py-2 px-3">Not&nbsp;int.&nbsp;%</th>
@@ -405,6 +410,7 @@ export function DailyStats({ rows, events, demoOutcomes }: Props) {
                     <td className="text-right tabular-nums text-gray-300 py-2.5 px-3">{m.calls ? pct(m.pickupRate) : '—'}</td>
                     <td className="text-right tabular-nums text-green-400 py-2.5 px-3">{m.demos}</td>
                     <td className="text-right tabular-nums text-gray-300 py-2.5 px-3">{m.answered ? pct1(m.demoRate) : '—'}</td>
+                    <td className="text-right tabular-nums text-green-400 py-2.5 px-3">{m.answered ? pct1(m.wonRate) : '—'}</td>
                     <td className="text-right tabular-nums text-gray-500 py-2.5 px-3">{m.noAnswer}</td>
                     <td className="text-right tabular-nums text-gray-500 py-2.5 px-3">{m.notInterested}</td>
                     <td className="text-right tabular-nums text-red-400/80 py-2.5 px-3">{m.calls ? pct(m.notInterestedRate) : '—'}</td>
@@ -421,6 +427,7 @@ export function DailyStats({ rows, events, demoOutcomes }: Props) {
                     <td className="text-right tabular-nums text-gray-200 py-2.5 px-3">{m.calls ? pct(m.pickupRate) : '—'}</td>
                     <td className="text-right tabular-nums text-green-400 py-2.5 px-3">{m.demos}</td>
                     <td className="text-right tabular-nums text-gray-200 py-2.5 px-3">{m.answered ? pct1(m.demoRate) : '—'}</td>
+                    <td className="text-right tabular-nums text-green-300 py-2.5 px-3">{m.answered ? pct1(m.wonRate) : '—'}</td>
                     <td className="text-right tabular-nums text-gray-500 py-2.5 px-3">{m.noAnswer}</td>
                     <td className="text-right tabular-nums text-gray-500 py-2.5 px-3">{m.notInterested}</td>
                     <td className="text-right tabular-nums text-red-400/80 py-2.5 px-3">{m.calls ? pct(m.notInterestedRate) : '—'}</td>

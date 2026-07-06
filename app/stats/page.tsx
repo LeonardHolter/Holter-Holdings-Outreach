@@ -10,6 +10,7 @@ export interface StatRow {
   date: string // 'YYYY-MM-DD'
   who_called: string | null
   reach_out_response: string | null
+  demo_outcome: string | null
   n: number
 }
 
@@ -36,16 +37,18 @@ async function fetchStatRows(): Promise<StatRow[]> {
       DATE(last_reach_out) AS date,
       who_called,
       reach_out_response,
+      demo_outcome,
       COUNT(*)::int AS n
     FROM companies
     WHERE last_reach_out IS NOT NULL
       AND last_reach_out >= CURRENT_DATE - INTERVAL '364 days'
-    GROUP BY DATE(last_reach_out), who_called, reach_out_response
+    GROUP BY DATE(last_reach_out), who_called, reach_out_response, demo_outcome
   `)
   return rows.map(r => ({
     date: String(r.date).slice(0, 10),
     who_called: r.who_called,
     reach_out_response: r.reach_out_response,
+    demo_outcome: r.demo_outcome,
     n: Number(r.n),
   }))
 }
