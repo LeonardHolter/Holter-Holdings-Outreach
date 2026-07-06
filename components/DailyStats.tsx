@@ -493,9 +493,10 @@ export function DailyStats({ rows, events, demoOutcomes }: Props) {
       <div className="grid sm:grid-cols-2 gap-4">
         <div className="bg-gray-900 rounded-xl p-5">
           <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">Demo Performance (all time)</h2>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <DayStat label="Show rate" value={demoStats.showRate != null ? pct(demoStats.showRate) : '—'} />
             <DayStat label="Win rate" value={demoStats.winRate != null ? pct(demoStats.winRate) : '—'} />
+            <DayStat label="Won / calls" value={allM.calls ? pct1(demoStats.won / allM.calls) : '—'} />
           </div>
           <div className="flex flex-wrap gap-x-3 gap-y-1 mt-3 text-xs text-gray-500">
             <span>{demoStats.held} held</span>
