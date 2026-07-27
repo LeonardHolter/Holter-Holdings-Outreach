@@ -11,6 +11,21 @@ interface Props {
   dialNumber?: string
 }
 
+// Telnyx click-to-call: when true, the hero Call button dials via Telnyx
+// (rings the caller's phone first, auto-recorded) from the number RESERVED
+// for this caller — instead of a bare tel: link.
+//
+// DISABLED 2026-07-27: a live test hit SIP 603 (carrier decline) on every
+// outbound call — Norwegian operators reject calls bearing a Norwegian
+// caller ID that arrive over Telnyx's international route (a documented,
+// deliberate anti-spoofing policy, not a bug in this code). The hero button
+// reverts to tel: until that's resolved with Telnyx (local termination) or
+// a Nordic carrier is wired in. The manual "Telnyx-oppringing" panel at the
+// top of the page still exists for testing a fix — this flag only gates
+// the automatic hero button. Flip back to true once outbound Norwegian
+// calls actually complete.
+const TELNYX_HERO_BUTTON_ENABLED = false
+
 async function patchCompanyOnce(id: string, payload: Partial<Company>): Promise<Company> {
   const res = await fetch(`/api/companies/${id}`, {
     method: 'PATCH',
@@ -188,16 +203,12 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
     return () => clearInterval(id)
   }, [sessionCaller])
 
-  // Telnyx click-to-call: when configured, the hero Call button dials via
-  // Telnyx (rings the caller's phone first, auto-recorded) from the number
-  // RESERVED for this caller — instead of a bare tel: link from a personal
-  // phone. Resolved per caller; null = Telnyx not configured, keep tel:.
   const [telnyxFrom, setTelnyxFrom] = useState<string | null>(null)
   const [telnyxPool, setTelnyxPool] = useState(0)
   const [telnyxCalling, setTelnyxCalling] = useState(false)
   const [telnyxStatus, setTelnyxStatus] = useState<string | null>(null)
   useEffect(() => {
-    if (!sessionCaller) {
+    if (!sessionCaller || !TELNYX_HERO_BUTTON_ENABLED) {
       setTelnyxFrom(null)
       return
     }
@@ -780,7 +791,7 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
           {/* Hero action: CALL */}
           <div className="px-4 sm:px-6 py-4 border-b border-gray-800 space-y-3">
             <div className="flex items-stretch gap-2">
-              {phoneNumber && telnyxFrom ? (
+              {phoneNumber && telnyxFrom && TELNYX_HERO_BUTTON_ENABLED ? (
                 <button
                   type="button"
                   onClick={telnyxCall}
