@@ -12,10 +12,15 @@ async function fetchQueue(): Promise<Company[]> {
 
   const [notCalled, previouslyContacted] = await Promise.all([
     query(
+      // next_reach_out also gates never-called leads — the "pops up
+      // tomorrow" snooze sets it, and without this filter a snoozed
+      // not-called lead would reappear immediately.
       `SELECT * FROM companies
-       WHERE reach_out_response = 'Not called' OR reach_out_response IS NULL
+       WHERE (reach_out_response = 'Not called' OR reach_out_response IS NULL)
+         AND (next_reach_out IS NULL OR next_reach_out <= $1)
        ORDER BY ${PRIORITY_ORDER_BY}
-       LIMIT 5000`
+       LIMIT 5000`,
+      [today]
     ),
     query(
       `SELECT * FROM companies

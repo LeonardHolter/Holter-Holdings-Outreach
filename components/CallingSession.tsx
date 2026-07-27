@@ -626,6 +626,43 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
     else { setIndex(next); loadCompany(queue[next]) }
   }
 
+  // One-click snooze: the lead disappears for the rest of today and pops
+  // back up in tomorrow's queue (next_reach_out gates BOTH queue branches).
+  // Saves the editable fields too, so notes typed before snoozing survive —
+  // but records no outcome and burns no call count: nobody was dialed.
+  async function snoozeUntilTomorrow() {
+    if (!company || saving) return
+    if (recordingRef.current) await stopRecording()
+    setSaving(true)
+    try {
+      const tomorrow = format(new Date(Date.now() + 86400000), 'yyyy-MM-dd')
+      await patchCompany(company.id, {
+        company_name: companyName || company.company_name,
+        notes: notes || null,
+        owners_name: ownersName || null,
+        phone_number: phoneNumber || null,
+        email: emailField || null,
+        callback_day: callbackDay || null,
+        callback_time: callbackTime || null,
+        state: state || null,
+        next_reach_out: tomorrow,
+      })
+      calledIdsRef.current.add(company.id)
+      const filtered = queue.filter(c => !calledIdsRef.current.has(c.id))
+      setQueue(filtered)
+      toast.success('Moved to tomorrow')
+      const next = await claimForward(filtered, 0)
+      setSaving(false)
+      if (next === -1) { setDone(true); return }
+      setIndex(next)
+      setLastRecordingId(null)
+      loadCompany(filtered[next])
+    } catch {
+      toast.error('Failed to move — still on this company')
+      setSaving(false)
+    }
+  }
+
   function handleBack() {
     if (index === 0) return
     let p = index - 1
@@ -945,15 +982,28 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
           {/* Callback */}
           <div className="px-4 sm:px-6 pb-4 sm:pb-5">
             {!showCallback ? (
-              <button
-                onClick={() => setShowCallback(true)}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed border-gray-600 text-sm text-gray-400 hover:border-gray-400 hover:text-gray-200 transition-colors touch-manipulation w-full"
-              >
-                <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                Set callback date/time
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowCallback(true)}
+                  className="flex-1 flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed border-gray-600 text-sm text-gray-400 hover:border-gray-400 hover:text-gray-200 transition-colors touch-manipulation"
+                >
+                  <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Set callback date/time
+                </button>
+                <button
+                  onClick={() => void snoozeUntilTomorrow()}
+                  disabled={saving}
+                  title="Skjul dette leadet til i morgen — ingen samtale registreres"
+                  className="shrink-0 flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed border-gray-600 text-sm text-gray-400 hover:border-gray-400 hover:text-gray-200 disabled:opacity-50 transition-colors touch-manipulation"
+                >
+                  <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+                  </svg>
+                  Tomorrow
+                </button>
+              </div>
             ) : (
               <div className="space-y-3">
                 <Field label="Callback Date">
