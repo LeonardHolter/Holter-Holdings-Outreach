@@ -7,7 +7,7 @@ import { signLead } from '@/lib/telnyxDial'
 // recorded, and that no path can dial or fetch something we didn't sign.
 
 const { queryMock } = vi.hoisted(() => ({
-  queryMock: vi.fn(async (): Promise<Record<string, unknown>[]> => []),
+  queryMock: vi.fn(async (_sql?: unknown, _params?: unknown): Promise<Record<string, unknown>[]> => []),
 }))
 vi.mock('@/lib/db', () => ({ query: queryMock }))
 
@@ -106,7 +106,7 @@ describe('recording route', () => {
     expect(res.status).toBe(200)
     const insert = queryMock.mock.calls.find(c => String(c[0]).includes('INSERT INTO call_recordings'))
     expect(insert).toBeTruthy()
-    const params = insert![1] as unknown[]
+    const params = insert![1] as unknown as unknown[]
     expect(params[0]).toBe('c1') // matched company
     expect(params[2]).toBe('telnyx:r1') // idempotency key
     expect(Buffer.isBuffer(params[3])).toBe(true) // the AUDIO, not a dead URL

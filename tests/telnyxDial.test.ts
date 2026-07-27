@@ -120,3 +120,24 @@ describe('lead signature', () => {
     expect(verifyLeadSignature('4712345678', '')).toBe(false)
   })
 })
+
+describe('call outcome explanations', () => {
+  it('stays silent for states that are fine', async () => {
+    const { explainCall } = await import('@/lib/telnyxDial')
+    for (const s of ['queued', 'initiated', 'ringing', 'in-progress', 'completed']) {
+      expect(explainCall(s, null)).toBeNull()
+    }
+  })
+
+  it('names the Norwegian CLI block for 603/busy instead of silent failure', async () => {
+    const { explainCall } = await import('@/lib/telnyxDial')
+    expect(explainCall('busy', '603')).toMatch(/norsk avsendernummer/i)
+    expect(explainCall('failed', '603')).toMatch(/603/)
+  })
+
+  it('reports no-answer and generic failures distinctly', async () => {
+    const { explainCall } = await import('@/lib/telnyxDial')
+    expect(explainCall('no-answer', null)).toMatch(/Ingen svarte/)
+    expect(explainCall('failed', '480')).toMatch(/480/)
+  })
+})

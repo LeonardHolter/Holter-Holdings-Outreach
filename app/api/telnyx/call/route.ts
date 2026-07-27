@@ -62,8 +62,10 @@ export async function POST(request: NextRequest) {
 
   try {
     const origin = request.nextUrl.origin
-    await startClickToCall(chosen.phoneNumber, to, origin, caller || undefined)
-    return NextResponse.json({ ok: true, from: chosen.phoneNumber })
+    const placed = await startClickToCall(chosen.phoneNumber, to, origin, caller || undefined)
+    // sid lets the UI poll for the REAL outcome — Telnyx accepting the
+    // request is not the same as the phone ringing.
+    return NextResponse.json({ ok: true, from: chosen.phoneNumber, sid: placed.sid })
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : 'Telnyx-kall feilet' },

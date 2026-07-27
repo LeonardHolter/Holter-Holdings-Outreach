@@ -138,6 +138,40 @@ export function verifyLeadSignature(leadDigits: string, sig: string): boolean {
   )
 }
 
+/** Human explanation for the failure modes that actually happen, so the
+ *  console says WHY instead of leaving a silent dead call. 603 is the one
+ *  that bit us first: Norwegian operators reject calls that carry a
+ *  Norwegian caller ID but arrive over an international route (Telnyx),
+ *  which is a carrier/regulatory block, not something our code can retry. */
+export function explainCall(status: string, sipCause?: string | null): string | null {
+  if (['queued', 'initiated', 'ringing', 'in-progress', 'completed'].includes(status)) return null
+  if (sipCause === '603' || status === 'busy') {
+    return 'Avvist av mottakers operatør (SIP 603). Norske operatører blokkerer samtaler med norsk avsendernummer som kommer via utenlandsk rute - se notatet om Telnyx og norsk CLI.'
+  }
+  if (status === 'no-answer') return 'Ingen svarte.'
+  if (status === 'failed') return `Samtalen feilet${sipCause ? ` (SIP ${sipCause})` : ''}.`
+  if (status === 'canceled') return 'Samtalen ble avbrutt.'
+  return `Uventet status: ${status}${sipCause ? ` (SIP ${sipCause})` : ''}.`
+}
+
+export type CallStatus = {
+  sid: string
+  status: string
+  sipCause: string | null
+  problem: string | null
+}
+
+/** Reads back a placed call. TeXML call resources live under the account. */
+export async function callStatus(sid: string): Promise<CallStatus> {
+  const data = await telnyx(
+    'GET',
+    `/texml/Accounts/${encodeURIComponent(process.env.TELNYX_TEXML_ACCOUNT_SID!)}/Calls/${encodeURIComponent(sid)}.json`,
+  )
+  const status = String(data.status ?? 'unknown')
+  const sipCause = data.sip_hangup_cause ? String(data.sip_hangup_cause) : null
+  return { sid, status, sipCause, problem: explainCall(status, sipCause) }
+}
+
 /** Places the agent leg: rings OUTREACH_AGENT_PHONE from the chosen number;
  *  on answer, TeXML at `twimlUrl` dials the lead — recorded, with caller
  *  metadata threaded through to the recording callback. Endpoint shape
@@ -162,5 +196,5 @@ export async function startClickToCall(
       Url: twimlUrl,
     },
   )
-  return data
+  return { sid: String(data.sid ?? data.call_sid ?? ''), raw: data }
 }

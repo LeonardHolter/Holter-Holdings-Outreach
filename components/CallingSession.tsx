@@ -231,10 +231,30 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
       const body = await res.json()
       if (!res.ok) throw new Error(body.error ?? 'Oppringing feilet')
       setTelnyxStatus(`Ringer telefonen din fra ${body.from} - svar, så kobles leadet på. Samtalen tas opp.`)
+      // Telnyx ACCEPTING the request is not the phone ringing: carrier
+      // rejections land seconds later. Poll for the real outcome and
+      // replace the optimistic line if it failed.
+      if (body.sid) void pollCallOutcome(body.sid)
     } catch (e) {
       setTelnyxStatus(e instanceof Error ? e.message : 'Noe gikk galt')
     } finally {
       setTelnyxCalling(false)
+    }
+  }
+
+  async function pollCallOutcome(sid: string) {
+    for (let i = 0; i < 6; i++) {
+      await new Promise(r => setTimeout(r, 2500))
+      try {
+        const d = await (await fetch(`/api/telnyx/call-status?sid=${encodeURIComponent(sid)}`, { cache: 'no-store' })).json()
+        if (d?.problem) {
+          setTelnyxStatus(`⚠ ${d.problem}`)
+          return
+        }
+        if (d?.status === 'in-progress' || d?.status === 'completed') return
+      } catch {
+        return
+      }
     }
   }
 
