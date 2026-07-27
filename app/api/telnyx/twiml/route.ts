@@ -1,11 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { normalizeDigits, verifyLeadSignature } from '@/lib/telnyxDial'
 
-// TeXML for the second leg: when the agent answers, dial the lead with the
-// same caller ID. PUBLIC path (Telnyx fetches it server-to-server, no
-// session cookie) — authenticated instead by the HMAC signature our own
-// /api/telnyx/call put in the URL, so it only ever dials leads we asked
-// it to. An unsigned request gets an empty hangup, not a dial tone.
+// TeXML for two situations, told apart by the HMAC signature:
+//
+//  SIGNED (minted by our /api/telnyx/call): second leg of click-to-call —
+//  the agent answered, dial the lead.
+//
+//  UNSIGNED: an INBOUND call to an outreach number (this route is the
+//  outreach TeXML app's voice_url) — i.e. a lead calling back. Forward it
+//  to the agent's own phone instead of hanging up on a warm lead.
+//
+// PUBLIC path (Telnyx fetches it cookie-less). The signature is what stops
+// strangers from using us to dial arbitrary numbers; the unsigned branch
+// only ever dials OUR OWN configured phone, so there is nothing to steal.
 
 export const dynamic = 'force-dynamic'
 
@@ -26,8 +33,13 @@ export async function GET(request: NextRequest) {
 function respond(request: NextRequest) {
   const lead = normalizeDigits(request.nextUrl.searchParams.get('lead') ?? '')
   const sig = request.nextUrl.searchParams.get('sig') ?? ''
-  if (!process.env.APP_PASSWORD || lead.length < 8 || !verifyLeadSignature(lead, sig)) {
-    return xml('<Response><Hangup/></Response>')
+  if (process.env.APP_PASSWORD && lead.length >= 8 && verifyLeadSignature(lead, sig)) {
+    return xml(`<Response><Dial>+${lead}</Dial></Response>`)
   }
-  return xml(`<Response><Dial>+${lead}</Dial></Response>`)
+  // Lead calling back -> ring the agent. Never a caller-chosen number.
+  const agent = normalizeDigits(process.env.OUTREACH_AGENT_PHONE ?? '')
+  if (agent.length >= 8) {
+    return xml(`<Response><Dial>+${agent}</Dial></Response>`)
+  }
+  return xml('<Response><Hangup/></Response>')
 }
