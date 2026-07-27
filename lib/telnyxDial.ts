@@ -31,6 +31,19 @@ export function telnyxDialerConfigured(): string | null {
 
 export const normalizeDigits = (raw: string) => raw.replace(/\D/g, '')
 
+// Same caller roster as the Twilio token route. Each caller OWNS a number
+// (sorted eligible list indexed by roster position) so the same person
+// always shows the same caller ID — leads recognize the number on the
+// second attempt, and missed-call returns land with the right person.
+export const CALLERS = ['Leonard', 'William']
+
+export function numberForCaller(caller: string, eligible: FromNumber[]): FromNumber | null {
+  if (eligible.length === 0) return null
+  const sorted = [...eligible].sort((a, b) => a.digits.localeCompare(b.digits))
+  const idx = CALLERS.findIndex(c => c.toLowerCase() === caller.trim().toLowerCase())
+  return sorted[(idx >= 0 ? idx : 0) % sorted.length]
+}
+
 async function telnyx(method: string, path: string, body?: Record<string, string>) {
   const res = await fetch(`${TELNYX}${path}`, {
     method,
@@ -96,12 +109,19 @@ export function verifyLeadSignature(leadDigits: string, sig: string): boolean {
 }
 
 /** Places the agent leg: rings OUTREACH_AGENT_PHONE from the chosen number;
- *  on answer, TeXML at `twimlUrl` dials the lead. Endpoint shape verified
- *  against Telnyx docs: POST /texml/Accounts/{account_sid}/Calls with
- *  To/From/ApplicationSid(+Url). */
-export async function startClickToCall(fromE164: string, leadDigits: string, origin: string) {
+ *  on answer, TeXML at `twimlUrl` dials the lead — recorded, with caller
+ *  metadata threaded through to the recording callback. Endpoint shape
+ *  verified against Telnyx docs: POST /texml/Accounts/{account_sid}/Calls
+ *  with To/From/ApplicationSid(+Url). */
+export async function startClickToCall(
+  fromE164: string,
+  leadDigits: string,
+  origin: string,
+  caller?: string,
+) {
   const sig = signLead(leadDigits)
-  const twimlUrl = `${origin}/api/telnyx/twiml?lead=${leadDigits}&sig=${sig}`
+  const meta = `lead=${leadDigits}&sig=${sig}&caller=${encodeURIComponent(caller ?? '')}&from=${encodeURIComponent(fromE164)}`
+  const twimlUrl = `${origin}/api/telnyx/twiml?${meta}`
   const data = await telnyx(
     'POST',
     `/texml/Accounts/${encodeURIComponent(process.env.TELNYX_TEXML_ACCOUNT_SID!)}/Calls`,

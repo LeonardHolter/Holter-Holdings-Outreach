@@ -188,6 +188,52 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
     return () => clearInterval(id)
   }, [sessionCaller])
 
+  // Telnyx click-to-call: when configured, the hero Call button dials via
+  // Telnyx (rings the caller's phone first, auto-recorded) from the number
+  // RESERVED for this caller — instead of a bare tel: link from a personal
+  // phone. Resolved per caller; null = Telnyx not configured, keep tel:.
+  const [telnyxFrom, setTelnyxFrom] = useState<string | null>(null)
+  const [telnyxCalling, setTelnyxCalling] = useState(false)
+  const [telnyxStatus, setTelnyxStatus] = useState<string | null>(null)
+  useEffect(() => {
+    if (!sessionCaller) {
+      setTelnyxFrom(null)
+      return
+    }
+    let cancelled = false
+    fetch(`/api/telnyx/numbers?caller=${encodeURIComponent(sessionCaller)}`, { cache: 'no-store' })
+      .then(r => r.json())
+      .then(d => {
+        if (!cancelled) setTelnyxFrom(d?.mine?.phoneNumber ?? null)
+      })
+      .catch(() => {
+        if (!cancelled) setTelnyxFrom(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [sessionCaller])
+
+  async function telnyxCall() {
+    if (!phoneNumber || telnyxCalling) return
+    setTelnyxCalling(true)
+    setTelnyxStatus(null)
+    try {
+      const res = await fetch('/api/telnyx/call', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to: phoneNumber, caller: sessionCaller }),
+      })
+      const body = await res.json()
+      if (!res.ok) throw new Error(body.error ?? 'Oppringing feilet')
+      setTelnyxStatus(`Ringer telefonen din fra ${body.from} - svar, så kobles leadet på. Samtalen tas opp.`)
+    } catch (e) {
+      setTelnyxStatus(e instanceof Error ? e.message : 'Noe gikk galt')
+    } finally {
+      setTelnyxCalling(false)
+    }
+  }
+
   // Editable fields
   const [response, setResponse] = useState('')
   const [reachedDM, setReachedDM] = useState(false)
@@ -710,7 +756,20 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
           {/* Hero action: CALL */}
           <div className="px-4 sm:px-6 py-4 border-b border-gray-800 space-y-3">
             <div className="flex items-stretch gap-2">
-              {phoneNumber ? (
+              {phoneNumber && telnyxFrom ? (
+                <button
+                  type="button"
+                  onClick={telnyxCall}
+                  disabled={telnyxCalling}
+                  className="flex-1 flex items-center justify-center gap-3 h-14 rounded-xl bg-white hover:bg-gray-200 active:bg-gray-300 disabled:opacity-60 text-black transition-colors touch-manipulation">
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/>
+                  </svg>
+                  <span className="text-base font-bold">{telnyxCalling ? 'Ringer…' : 'Call'}</span>
+                  <span className="font-mono text-base font-semibold tabular-nums">{phoneNumber}</span>
+                  <span className="text-[10px] font-mono uppercase tracking-widest text-gray-500">via {telnyxFrom} · REC</span>
+                </button>
+              ) : phoneNumber ? (
                 <a href={`tel:${phoneNumber}`}
                   className="flex-1 flex items-center justify-center gap-3 h-14 rounded-xl bg-white hover:bg-gray-200 active:bg-gray-300 text-black transition-colors touch-manipulation">
                   <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
@@ -760,6 +819,9 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
                 </button>
               )}
             </div>
+            {telnyxStatus && (
+              <p className="text-xs text-gray-400">{telnyxStatus}</p>
+            )}
 
             {/* Auto-record toggle */}
             <button

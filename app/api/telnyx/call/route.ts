@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import {
   eligibleFromNumbers,
   normalizeDigits,
+  numberForCaller,
   startClickToCall,
   telnyxDialerConfigured,
 } from '@/lib/telnyxDial'
@@ -19,9 +20,10 @@ export async function POST(request: NextRequest) {
 
   const body = await request.json().catch(() => null)
   const from = typeof body?.from === 'string' ? body.from.trim() : ''
+  const caller = typeof body?.caller === 'string' ? body.caller.trim() : ''
   const to = typeof body?.to === 'string' ? normalizeDigits(body.to) : ''
-  if (!from || to.length < 8) {
-    return NextResponse.json({ error: 'Ugyldig from/to.' }, { status: 400 })
+  if ((!from && !caller) || to.length < 8) {
+    return NextResponse.json({ error: 'Ugyldig from/caller/to.' }, { status: 400 })
   }
 
   let eligible
@@ -33,17 +35,20 @@ export async function POST(request: NextRequest) {
       { status: 502 },
     )
   }
-  const chosen = eligible.find(n => n.digits === normalizeDigits(from))
+  // Explicit from (manual panel) or the caller's own fixed number.
+  const chosen = from
+    ? eligible.find(n => n.digits === normalizeDigits(from))
+    : numberForCaller(caller, eligible)
   if (!chosen) {
     return NextResponse.json(
-      { error: 'Nummeret er ikke tilgjengelig for outreach (kan være tatt i bruk av en kunde).' },
+      { error: 'Ingen tilgjengelige outreach-numre (kundenumre er utelukket).' },
       { status: 409 },
     )
   }
 
   try {
     const origin = request.nextUrl.origin
-    await startClickToCall(chosen.phoneNumber, to, origin)
+    await startClickToCall(chosen.phoneNumber, to, origin, caller || undefined)
     return NextResponse.json({ ok: true, from: chosen.phoneNumber })
   } catch (e) {
     return NextResponse.json(

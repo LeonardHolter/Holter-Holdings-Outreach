@@ -6,7 +6,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 // session/claim) returned 401.
 // /api/telnyx/twiml is fetched server-to-server by Telnyx (no cookie);
 // it authenticates with its own HMAC signature instead.
-const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/auth/signout', '/api/telnyx/twiml']
+const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/auth/signout', '/api/telnyx/twiml', '/api/telnyx/recording']
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
