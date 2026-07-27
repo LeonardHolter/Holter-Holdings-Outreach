@@ -24,7 +24,7 @@ export function telnyxDialerConfigured(): string | null {
     'TELNYX_TEXML_ACCOUNT_SID',
     'TELNYX_TEXML_APP_SID',
     'OUTREACH_AGENT_PHONE',
-    'OUTREACH_SHARED_SECRET',
+    'APP_PASSWORD', // doubles as the TwiML HMAC key - no extra secret to manage
   ].filter(k => !process.env[k])
   return missing.length ? `Mangler env: ${missing.join(', ')}` : null
 }
@@ -47,11 +47,12 @@ async function telnyx(method: string, path: string, body?: Record<string, string
 }
 
 async function fetchReservedDigits(): Promise<Set<string>> {
+  // Public endpoint (digits of published business numbers only); the
+  // protection is on OUR side - any failure here means nothing is eligible.
   const url =
     process.env.KICONSULT_RESERVED_URL ??
     'https://www.kiconsult.no/api/telephony/reserved-numbers'
   const res = await fetch(url, {
-    headers: { 'X-Outreach-Secret': process.env.OUTREACH_SHARED_SECRET! },
     cache: 'no-store',
     signal: AbortSignal.timeout(8000),
   })
@@ -76,10 +77,11 @@ export async function eligibleFromNumbers(): Promise<FromNumber[]> {
 }
 
 /** HMAC over the lead number so the public TwiML endpoint only dials leads
- *  WE asked it to — Telnyx fetches it without a session cookie. */
+ *  WE asked it to — Telnyx fetches it without a session cookie. Keyed on
+ *  APP_PASSWORD (already required for login) so no second secret exists. */
 export function signLead(leadDigits: string): string {
   return crypto
-    .createHmac('sha256', process.env.OUTREACH_SHARED_SECRET!)
+    .createHmac('sha256', process.env.APP_PASSWORD!)
     .update(leadDigits)
     .digest('hex')
     .slice(0, 32)

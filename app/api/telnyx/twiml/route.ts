@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
 function respond(request: NextRequest) {
   const lead = normalizeDigits(request.nextUrl.searchParams.get('lead') ?? '')
   const sig = request.nextUrl.searchParams.get('sig') ?? ''
-  if (!process.env.OUTREACH_SHARED_SECRET || lead.length < 8 || !verifyLeadSignature(lead, sig)) {
+  if (!process.env.APP_PASSWORD || lead.length < 8 || !verifyLeadSignature(lead, sig)) {
     return xml('<Response><Hangup/></Response>')
   }
   return xml(`<Response><Dial>+${lead}</Dial></Response>`)
