@@ -9,7 +9,8 @@
     "migrate": "node scripts/migrate.mjs",
     "scrape": "node scripts/scrape-google-maps.mjs",
     "enrich": "node scripts/enrich-leads.mjs",
-    "prepare": "husky"
+    "prepare": "husky",
+    "test": "vitest run"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
@@ -41,6 +42,7 @@
     "husky": "^9.1.7",
     "lint-staged": "^16.3.3",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.10"
   }
 }
