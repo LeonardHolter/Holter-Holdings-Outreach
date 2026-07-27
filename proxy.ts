@@ -4,7 +4,9 @@ import { NextResponse, type NextRequest } from 'next/server'
 // endpoints, and Next.js internals/static assets. Without this, page routes were
 // open and users never obtained the cookie — so auth-checked APIs (recordings,
 // session/claim) returned 401.
-const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/auth/signout']
+// /api/telnyx/twiml is fetched server-to-server by Telnyx (no cookie);
+// it authenticates with its own HMAC signature instead.
+const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/auth/signout', '/api/telnyx/twiml']
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
