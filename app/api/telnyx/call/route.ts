@@ -2,10 +2,22 @@ import { NextRequest, NextResponse } from 'next/server'
 import {
   eligibleFromNumbers,
   normalizeDigits,
-  numberForCaller,
+  pickFromPool,
+  poolForCaller,
   startClickToCall,
   telnyxDialerConfigured,
 } from '@/lib/telnyxDial'
+import { query } from '@/lib/db'
+
+/** Callers with a fresh heartbeat (same 90s staleness the claim system
+ *  uses) — decides whether the caller is alone and gets the whole pool. */
+async function activeCallers(): Promise<string[]> {
+  const rows = await query(
+    `SELECT DISTINCT caller_name FROM company_claims
+     WHERE claimed_at > NOW() - INTERVAL '90 seconds'`,
+  )
+  return rows.map(r => String(r.caller_name))
+}
 
 // Click-to-call: rings the agent's phone from the chosen Telnyx number,
 // then bridges to the lead. The from-number is re-validated against the
@@ -35,10 +47,12 @@ export async function POST(request: NextRequest) {
       { status: 502 },
     )
   }
-  // Explicit from (manual panel) or the caller's own fixed number.
+  // Explicit from (manual panel), or rotate within the caller's pool —
+  // their own fixed number when a colleague is active, every number when
+  // they're alone on shift.
   const chosen = from
     ? eligible.find(n => n.digits === normalizeDigits(from))
-    : numberForCaller(caller, eligible)
+    : pickFromPool(poolForCaller(caller, eligible, await activeCallers()))
   if (!chosen) {
     return NextResponse.json(
       { error: 'Ingen tilgjengelige outreach-numre (kundenumre er utelukket).' },

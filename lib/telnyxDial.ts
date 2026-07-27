@@ -44,6 +44,36 @@ export function numberForCaller(caller: string, eligible: FromNumber[]): FromNum
   return sorted[(idx >= 0 ? idx : 0) % sorted.length]
 }
 
+/** The numbers a caller may dial from RIGHT NOW. With a colleague active
+ *  (fresh company_claims heartbeat), everyone keeps their own fixed number.
+ *  Alone on shift, the whole pool is yours, rotated per call — twice the
+ *  sustainable volume per number's reputation (carriers spam-flag numbers
+ *  that dial too much too fast), and no line sits idle. */
+export function poolForCaller(
+  caller: string,
+  eligible: FromNumber[],
+  activeCallers: string[],
+): FromNumber[] {
+  if (eligible.length === 0) return []
+  const me = caller.trim().toLowerCase()
+  const othersActive = activeCallers.some(
+    a => a.trim().toLowerCase() !== me && CALLERS.some(c => c.toLowerCase() === a.trim().toLowerCase()),
+  )
+  if (othersActive) {
+    const mine = numberForCaller(caller, eligible)
+    return mine ? [mine] : []
+  }
+  return [...eligible].sort((a, b) => a.digits.localeCompare(b.digits))
+}
+
+/** Per-call rotation within the pool. Random rather than stateful: the
+ *  functions run serverless with no shared memory, and over any real call
+ *  volume random splits ~evenly — which is all number hygiene needs. */
+export function pickFromPool(pool: FromNumber[]): FromNumber | null {
+  if (pool.length === 0) return null
+  return pool[Math.floor(Math.random() * pool.length)]
+}
+
 async function telnyx(method: string, path: string, body?: Record<string, string>) {
   const res = await fetch(`${TELNYX}${path}`, {
     method,

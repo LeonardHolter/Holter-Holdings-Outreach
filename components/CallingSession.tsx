@@ -193,6 +193,7 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
   // RESERVED for this caller — instead of a bare tel: link from a personal
   // phone. Resolved per caller; null = Telnyx not configured, keep tel:.
   const [telnyxFrom, setTelnyxFrom] = useState<string | null>(null)
+  const [telnyxPool, setTelnyxPool] = useState(0)
   const [telnyxCalling, setTelnyxCalling] = useState(false)
   const [telnyxStatus, setTelnyxStatus] = useState<string | null>(null)
   useEffect(() => {
@@ -204,7 +205,10 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
     fetch(`/api/telnyx/numbers?caller=${encodeURIComponent(sessionCaller)}`, { cache: 'no-store' })
       .then(r => r.json())
       .then(d => {
-        if (!cancelled) setTelnyxFrom(d?.mine?.phoneNumber ?? null)
+        if (!cancelled) {
+          setTelnyxFrom(d?.mine?.phoneNumber ?? null)
+          setTelnyxPool(d?.poolSize ?? 0)
+        }
       })
       .catch(() => {
         if (!cancelled) setTelnyxFrom(null)
@@ -767,7 +771,9 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
                   </svg>
                   <span className="text-base font-bold">{telnyxCalling ? 'Ringer…' : 'Call'}</span>
                   <span className="font-mono text-base font-semibold tabular-nums">{phoneNumber}</span>
-                  <span className="text-[10px] font-mono uppercase tracking-widest text-gray-500">via {telnyxFrom} · REC</span>
+                  <span className="text-[10px] font-mono uppercase tracking-widest text-gray-500">
+                    {telnyxPool > 1 ? `via ${telnyxPool} numre (rotasjon)` : `via ${telnyxFrom}`} · REC
+                  </span>
                 </button>
               ) : phoneNumber ? (
                 <a href={`tel:${phoneNumber}`}

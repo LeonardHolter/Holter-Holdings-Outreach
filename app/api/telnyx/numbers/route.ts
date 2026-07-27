@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { eligibleFromNumbers, numberForCaller, telnyxDialerConfigured } from '@/lib/telnyxDial'
+import { eligibleFromNumbers, numberForCaller, poolForCaller, telnyxDialerConfigured } from '@/lib/telnyxDial'
+import { query } from '@/lib/db'
 
 // Numbers the dialer may cold-call FROM: the Telnyx account's numbers minus
 // every number serving a KI Consult customer (fetched live, fail-closed).
@@ -13,11 +14,22 @@ export async function GET(request: NextRequest) {
 
   try {
     const numbers = await eligibleFromNumbers()
-    // ?caller=Leonard -> which number is THEIRS (fixed per caller, so the
-    // same person always presents the same caller ID).
+    // ?caller=Leonard -> which number is THEIRS (fixed per caller), plus
+    // how many they may rotate across right now (the whole pool when the
+    // other caller is offline).
     const caller = request.nextUrl.searchParams.get('caller')
-    const mine = caller ? numberForCaller(caller, numbers) : null
-    return NextResponse.json({ configured: true, numbers, mine })
+    let mine = null
+    let poolSize = 0
+    if (caller) {
+      const rows = await query(
+        `SELECT DISTINCT caller_name FROM company_claims
+         WHERE claimed_at > NOW() - INTERVAL '90 seconds'`,
+      )
+      const pool = poolForCaller(caller, numbers, rows.map(r => String(r.caller_name)))
+      mine = numberForCaller(caller, numbers)
+      poolSize = pool.length
+    }
+    return NextResponse.json({ configured: true, numbers, mine, poolSize })
   } catch (e) {
     // Fail closed, loudly: no reserved list -> no eligible numbers.
     return NextResponse.json(
