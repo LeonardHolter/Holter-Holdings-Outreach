@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { toast } from 'sonner'
+import { TEAM_MEMBERS } from '@/types'
 
 // A won customer, with a way back out.
 //
@@ -15,14 +16,46 @@ export interface WonCompany {
   id: string
   company_name: string | null
   state: string | null
-  who_called: string | null
   phone_number: string | null
   last_reach_out: string | null
+  /** Best-effort attribution: whoever booked the demo, else the last caller,
+   *  else the only person who ever dialled it. Null when nothing was logged —
+   *  which happens when a company is marked Won by hand in the Companies
+   *  table, since who_called is only written by the dialer. */
+  closedBy: string | null
 }
 
 export function WonRow({ company }: { company: WonCompany }) {
   const [saving, setSaving] = useState(false)
   const [gone, setGone] = useState(false)
+  const [closedBy, setClosedBy] = useState(company.closedBy)
+
+  /** Attribute (or re-attribute) the win. Writes who_called, which is the
+   *  field the dialer would have set — so a hand-marked win can be credited
+   *  without touching the Companies table.
+   *
+   *  Caveat worth knowing: if a 'Demo booked' call_event exists with a
+   *  different caller, that event still wins on reload, because whoever
+   *  actually booked the demo is better evidence than a manual edit. In
+   *  practice the rows that show no closer have no such event. */
+  async function setCloser(name: string) {
+    const next = name || null
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/companies/${company.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ who_called: next }),
+      })
+      if (!res.ok) throw new Error('failed')
+      setClosedBy(next)
+      toast.success(next ? `Credited to ${next}` : 'Closer cleared')
+    } catch {
+      toast.error('Could not save — try again')
+    } finally {
+      setSaving(false)
+    }
+  }
 
   async function undoWin() {
     setSaving(true)
@@ -53,7 +86,27 @@ export function WonRow({ company }: { company: WonCompany }) {
         </div>
         <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-[11px] text-gray-500">
           {company.state && <span>{company.state}</span>}
-          {company.who_called && <span>· closed by {company.who_called}</span>}
+          {/* Editable in place: a win with no closer used to send you off to
+              the Companies table to fix it. Now you credit it where you see
+              the gap. */}
+          <span className="flex items-center gap-1">
+            <span aria-hidden>·</span>
+            <select
+              value={closedBy ?? ''}
+              disabled={saving}
+              onChange={e => void setCloser(e.target.value)}
+              aria-label="Who closed this deal"
+              title="Who closed this deal. Blank means nothing was logged — who_called is only written automatically when an outcome is saved through the dialer."
+              className={`cursor-pointer rounded border border-transparent bg-transparent py-0 pl-0 pr-4 text-[11px] hover:border-gray-700 focus:border-gray-600 focus:outline-none disabled:opacity-40 ${
+                closedBy ? 'text-gray-500' : 'italic text-gray-600'
+              }`}
+            >
+              <option value="">closer not set</option>
+              {TEAM_MEMBERS.map(m => (
+                <option key={m} value={m}>closed by {m}</option>
+              ))}
+            </select>
+          </span>
           {company.last_reach_out && <span>· {company.last_reach_out}</span>}
         </div>
       </div>
