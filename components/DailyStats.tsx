@@ -63,6 +63,9 @@ function aggregate(rows: StatRow[]): Metrics {
 }
 
 const pct = (x: number) => `${Math.round(x * 100)}%`
+// Pickup shown as "60% (430)": the rate alone hides whether it came from 5
+// calls or 500, which is the difference between noise and a real signal.
+const pctOf = (rate: number, n: number) => `${pct(rate)} (${n})`
 // One-decimal variant, for low-magnitude rates (e.g. Demo %) where rounding
 // to a whole number hides the difference between e.g. 1.2% and 1.8%.
 const pct1 = (x: number) => `${(x * 100).toFixed(1)}%`
@@ -141,7 +144,10 @@ interface Props {
 }
 
 export function DailyStats({ rows, events, demoOutcomes }: Props) {
-  const [period, setPeriod] = useState<Period>('today')
+  // Default to all-time: the Breakdown answers "how are we doing", and on a
+  // quiet morning a 'today' default shows an empty table that reads like the
+  // data is broken.
+  const [period, setPeriod] = useState<Period>('all')
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
   const [notesState, setNotesState] = useState<{ day: string; company: DayNote[]; dayNotes: DayNote[] } | null>(null)
   const [noteDraft, setNoteDraft] = useState('')
@@ -353,7 +359,7 @@ export function DailyStats({ rows, events, demoOutcomes }: Props) {
         </Kpi>
         <Kpi label="This week">
           <span className="text-3xl font-bold tabular-nums text-white">{weekM.calls}</span>
-          <span className="text-xs text-gray-600">{pct(weekM.pickupRate)} pickup</span>
+          <span className="text-xs text-gray-600">{pct(weekM.pickupRate)} pickup ({weekM.answered})</span>
         </Kpi>
         <Kpi label="Demo rate (all)">
           <span className="text-3xl font-bold tabular-nums text-green-400">{allM.answered ? pct1(allM.demoRate) : '—'}</span>
@@ -407,7 +413,7 @@ export function DailyStats({ rows, events, demoOutcomes }: Props) {
                       </span>
                     </td>
                     <td className="text-right tabular-nums text-white py-2.5 px-3">{m.calls}</td>
-                    <td className="text-right tabular-nums text-gray-300 py-2.5 px-3">{m.calls ? pct(m.pickupRate) : '—'}</td>
+                    <td className="text-right tabular-nums text-gray-300 py-2.5 px-3">{m.calls ? pctOf(m.pickupRate, m.answered) : '—'}</td>
                     <td className="text-right tabular-nums text-green-400 py-2.5 px-3">{m.demos}</td>
                     <td className="text-right tabular-nums text-gray-300 py-2.5 px-3">{m.answered ? pct1(m.demoRate) : '—'}</td>
                     <td className="text-right tabular-nums text-green-400 py-2.5 px-3">{m.answered ? pct1(m.wonRate) : '—'}</td>
@@ -424,7 +430,7 @@ export function DailyStats({ rows, events, demoOutcomes }: Props) {
                   <tr className="font-semibold">
                     <td className="py-2.5 pr-3 text-gray-300">Team total</td>
                     <td className="text-right tabular-nums text-white py-2.5 px-3">{m.calls}</td>
-                    <td className="text-right tabular-nums text-gray-200 py-2.5 px-3">{m.calls ? pct(m.pickupRate) : '—'}</td>
+                    <td className="text-right tabular-nums text-gray-200 py-2.5 px-3">{m.calls ? pctOf(m.pickupRate, m.answered) : '—'}</td>
                     <td className="text-right tabular-nums text-green-400 py-2.5 px-3">{m.demos}</td>
                     <td className="text-right tabular-nums text-gray-200 py-2.5 px-3">{m.answered ? pct1(m.demoRate) : '—'}</td>
                     <td className="text-right tabular-nums text-green-300 py-2.5 px-3">{m.answered ? pct1(m.wonRate) : '—'}</td>
@@ -631,7 +637,7 @@ export function DailyStats({ rows, events, demoOutcomes }: Props) {
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
               <DayStat label="Calls" value={String(dm.calls)} />
-              <DayStat label="Pickup %" value={dm.calls ? pct(dm.pickupRate) : '—'} />
+              <DayStat label="Pickup %" value={dm.calls ? pctOf(dm.pickupRate, dm.answered) : '—'} />
               <DayStat label="Demos" value={String(dm.demos)} />
               <DayStat label="Not interested" value={String(dm.notInterested)} />
             </div>
