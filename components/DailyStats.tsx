@@ -42,7 +42,7 @@ interface Metrics {
   notInterestedRate: number
 }
 
-function aggregate(rows: StatRow[]): Metrics {
+export function aggregate(rows: StatRow[]): Metrics {
   const sum = (pred: (r: StatRow) => boolean) => rows.filter(pred).reduce((s, r) => s + r.n, 0)
   const calls = rows.reduce((s, r) => s + r.n, 0)
   const noAnswer = sum(r => r.reach_out_response === 'No answer')
@@ -55,10 +55,15 @@ function aggregate(rows: StatRow[]): Metrics {
   const answered = calls - noAnswer
   return {
     calls, answered, noAnswer, demos, won, notInterested, callback, wrong, notNeeded,
+    // Pickup is the ONLY rate measured against every dial — it is the metric
+    // that asks "did anyone answer". Everything below describes what happened
+    // IN a conversation, so it divides by `answered`: a phone nobody picked up
+    // can't book a demo or say "not interested", and counting those attempts in
+    // the denominator just dilutes every conversion number by your pickup rate.
     pickupRate: calls ? answered / calls : 0,
     demoRate: answered ? demos / answered : 0,
     wonRate: answered ? won / answered : 0,
-    notInterestedRate: calls ? notInterested / calls : 0,
+    notInterestedRate: answered ? notInterested / answered : 0,
   }
 }
 
@@ -77,6 +82,7 @@ const pct1 = (x: number) => `${(x * 100).toFixed(1)}%`
 
 interface EventMetrics {
   dials: number
+  answered: number
   demos: number
   dialsPerDemo: number | null
   dmReached: number
@@ -84,17 +90,27 @@ interface EventMetrics {
   dmToDemoRate: number | null
 }
 
-function aggregateEvents(events: CallEvent[]): EventMetrics {
+/** An event counts as answered unless it was explicitly logged "No answer".
+ *  Same rule everywhere a conversation-rate denominator is needed. */
+const isAnswered = (e: CallEvent) => Boolean(e.response) && e.response !== 'No answer'
+
+export function aggregateEvents(events: CallEvent[]): EventMetrics {
   const dials = events.length
+  const answered = events.filter(isAnswered).length
   const demos = events.filter(e => e.response === 'Demo booked').length
   const dm = events.filter(e => e.reached_decision_maker === true)
   const dmDemos = dm.filter(e => e.response === 'Demo booked').length
   return {
     dials,
+    answered,
     demos,
+    // Dials/demo is deliberately per DIAL — it answers "how much dialling does
+    // one demo cost me", which is a volume question, not a conversion one.
     dialsPerDemo: demos > 0 ? dials / demos : null,
     dmReached: dm.length,
-    dmReachedRate: dials ? dm.length / dials : null,
+    // Reaching a decision-maker requires someone to pick up, so this is a
+    // conversation rate like the rest.
+    dmReachedRate: answered ? dm.length / answered : null,
     dmToDemoRate: dm.length ? dmDemos / dm.length : null,
   }
 }
@@ -114,12 +130,15 @@ function revenueTier(rev: number | null): RevenueTier {
   return 'Over 25M'
 }
 
-function revenueTierPerf(events: CallEvent[]) {
+export function revenueTierPerf(events: CallEvent[]) {
   return REVENUE_TIERS.map(tier => {
     const evs = events.filter(e => revenueTier(e.revenue_at_call) === tier)
     const dials = evs.length
+    const answered = evs.filter(isAnswered).length
     const demos = evs.filter(e => e.response === 'Demo booked').length
-    return { tier, dials, demos, demoRate: dials ? demos / dials : null }
+    // Per ANSWERED call, so a tier that simply picks up more often doesn't
+    // look like a tier that converts better.
+    return { tier, dials, answered, demos, demoRate: answered ? demos / answered : null }
   }).filter(t => t.dials > 0)
 }
 
@@ -336,7 +355,7 @@ export function DailyStats({ rows, events, demoOutcomes }: Props) {
 
       {/* KPI row */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-        <Kpi label="Today">
+        <Kpi label="Today" info={`Calls you logged today (Oslo time). Every saved outcome counts as one call — a re-dial of the same company counts again. Goal is ${GOAL}/day.`}>
           <div className="flex items-end gap-2">
             <span className="text-3xl font-bold tabular-nums text-white">{todayM.calls}</span>
             {goalMet && <span className="mb-1 text-white text-sm font-medium">✓ goal</span>}
@@ -350,22 +369,22 @@ export function DailyStats({ rows, events, demoOutcomes }: Props) {
             </div>
           )}
         </Kpi>
-        <Kpi label="Streak">
+        <Kpi label="Streak" info="Consecutive days with at least one logged call, counting back from today (or from yesterday if you haven't started yet). Breaks the first day with zero calls.">
           <div className="flex items-end gap-2">
             <span className={`text-3xl font-bold tabular-nums ${streak > 0 ? 'text-orange-400' : 'text-white'}`}>{streak}</span>
             <span className="mb-1 text-gray-500 text-sm">{streak === 1 ? 'day' : 'days'}</span>
           </div>
           {streak > 0 && <span className="text-xs text-orange-400/70">🔥 in a row</span>}
         </Kpi>
-        <Kpi label="This week">
+        <Kpi label="This week" info="Calls logged in the last 7 days. The line underneath is pickup: answered ÷ calls, with the answered count in brackets.">
           <span className="text-3xl font-bold tabular-nums text-white">{weekM.calls}</span>
           <span className="text-xs text-gray-600">{pct(weekM.pickupRate)} pickup ({weekM.answered})</span>
         </Kpi>
-        <Kpi label="Demo rate (all)">
+        <Kpi label="Demo rate (all)" info="Demos booked ÷ ANSWERED calls, all time. Divided by answered rather than total dials — nobody books a demo on a phone that never got picked up, so counting those would just dilute the number by your pickup rate.">
           <span className="text-3xl font-bold tabular-nums text-green-400">{allM.answered ? pct1(allM.demoRate) : '—'}</span>
           <span className="text-xs text-gray-600">{allM.demos} demos booked</span>
         </Kpi>
-        <Kpi label="Demo won rate (all)">
+        <Kpi label="Demo won rate (all)" info="Demos marked Won ÷ demos with a decided outcome (Won + Lost), all time. Demos still awaiting an outcome are excluded so a full pipeline doesn't drag the number down.">
           <span className="text-3xl font-bold tabular-nums text-green-400">{demoStats.winRate != null ? pct(demoStats.winRate) : '—'}</span>
           <span className="text-xs text-gray-600">{demoStats.won} of {demoStats.won + demoStats.lost} decided</span>
         </Kpi>
@@ -390,15 +409,15 @@ export function DailyStats({ rows, events, demoOutcomes }: Props) {
             <thead>
               <tr className="text-xs text-gray-500 uppercase tracking-wider border-b border-gray-800">
                 <th className="text-left font-semibold py-2 pr-3">Caller</th>
-                <th className="text-right font-semibold py-2 px-3">Calls</th>
-                <th className="text-right font-semibold py-2 px-3">Pickup&nbsp;%</th>
-                <th className="text-right font-semibold py-2 px-3">Demos</th>
-                <th className="text-right font-semibold py-2 px-3">Demo&nbsp;%</th>
-                <th className="text-right font-semibold py-2 px-3">Won&nbsp;%</th>
-                <th className="text-right font-semibold py-2 px-3">No&nbsp;answer</th>
-                <th className="text-right font-semibold py-2 px-3">Not&nbsp;int.</th>
-                <th className="text-right font-semibold py-2 px-3">Not&nbsp;int.&nbsp;%</th>
-                <th className="text-right font-semibold py-2 pl-3">Callbacks</th>
+                <th className="text-right font-semibold py-2 px-3">Calls<Info text="Calls logged in the selected period. One per saved outcome; re-dialling the same company counts again." /></th>
+                <th className="text-right font-semibold py-2 px-3">Pickup&nbsp;%<Info text="Answered ÷ calls. The only rate here measured against every dial — it is the metric that asks whether anyone picked up. Bracketed number is the answered count." /></th>
+                <th className="text-right font-semibold py-2 px-3">Demos<Info text="Calls whose outcome was “Demo booked” in the period." /></th>
+                <th className="text-right font-semibold py-2 px-3">Demo&nbsp;%<Info text="Demos ÷ ANSWERED calls. Divided by answered, not total dials: an unanswered phone cannot book a demo, so including it would only dilute the rate by your pickup rate." /></th>
+                <th className="text-right font-semibold py-2 px-3">Won&nbsp;%<Info text="Calls whose demo was later marked Won ÷ ANSWERED calls. Same answered-based denominator as Demo %, so the two are directly comparable." /></th>
+                <th className="text-right font-semibold py-2 px-3">No&nbsp;answer<Info text="Calls whose outcome was “No answer” — nobody picked up." /></th>
+                <th className="text-right font-semibold py-2 px-3">Not&nbsp;int.<Info text="Calls whose outcome was “Not interested”." /></th>
+                <th className="text-right font-semibold py-2 px-3">Not&nbsp;int.&nbsp;%<Info text="Not interested ÷ ANSWERED calls. Only someone who picked up can decline, so dials that never connected are excluded." /></th>
+                <th className="text-right font-semibold py-2 pl-3">Callbacks<Info text="Calls whose outcome was “Call back later” — still open, not lost." /></th>
               </tr>
             </thead>
             <tbody>
@@ -460,9 +479,9 @@ export function DailyStats({ rows, events, demoOutcomes }: Props) {
               <thead>
                 <tr className="text-xs text-gray-500 uppercase tracking-wider border-b border-gray-800">
                   <th className="text-left font-semibold py-2 pr-3">Caller</th>
-                  <th className="text-right font-semibold py-2 px-3">Dials&nbsp;/&nbsp;Demo</th>
-                  <th className="text-right font-semibold py-2 px-3">Reached&nbsp;DM&nbsp;%</th>
-                  <th className="text-right font-semibold py-2 pl-3">DM&nbsp;→&nbsp;Demo&nbsp;%</th>
+                  <th className="text-right font-semibold py-2 px-3">Dials&nbsp;/&nbsp;Demo<Info text="Total dials ÷ demos booked. Deliberately per DIAL, not per answered call — it answers &quot;how much dialling does one demo cost me&quot;, which is a volume question. Lower is better." /></th>
+                  <th className="text-right font-semibold py-2 px-3">Reached&nbsp;DM&nbsp;%<Info text="Calls where you toggled &quot;Reached decision-maker&quot; ÷ ANSWERED calls. You can only reach a decision-maker in a conversation, so unanswered dials are excluded. Only counts calls logged since that toggle shipped." /></th>
+                  <th className="text-right font-semibold py-2 pl-3">DM&nbsp;→&nbsp;Demo&nbsp;%<Info text="Demos booked ÷ calls where you reached the decision-maker. Measures your pitch once you have the right person on the line — the pure closing number." /></th>
                 </tr>
               </thead>
               <tbody>
@@ -505,11 +524,14 @@ export function DailyStats({ rows, events, demoOutcomes }: Props) {
       {/* Demo performance + callback conversion */}
       <div className="grid sm:grid-cols-2 gap-4">
         <div className="bg-gray-900 rounded-xl p-5">
-          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">Demo Performance (all time)</h2>
+          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">
+            Demo Performance (all time)
+            <Info text="What happens after a demo is booked: whether it was held, and whether it was won. Independent of the call metrics above — these count demos, not calls." />
+          </h2>
           <div className="grid grid-cols-3 gap-3">
-            <DayStat label="Show rate" value={demoStats.showRate != null ? pct(demoStats.showRate) : '—'} />
-            <DayStat label="Win rate" value={demoStats.winRate != null ? pct(demoStats.winRate) : '—'} />
-            <DayStat label="Won / calls" value={allM.calls ? pct1(demoStats.won / allM.calls) : '—'} />
+            <DayStat label="Show rate" info="Demos held ÷ demos that resolved either way (held + no-show). Demos still in the future are excluded, so a full calendar doesn't drag it down." value={demoStats.showRate != null ? pct(demoStats.showRate) : '—'} />
+            <DayStat label="Win rate" info="Demos marked Won ÷ demos with a decided outcome (Won + Lost). Demos awaiting an outcome are excluded." value={demoStats.winRate != null ? pct(demoStats.winRate) : '—'} />
+            <DayStat label="Won / answered" info="Deals won ÷ answered calls (all time). The bottom line: of every conversation you actually had, how many ended as a paying customer. Divided by answered rather than dials so it doesn't sink just because pickup was low." value={allM.answered ? pct1(demoStats.won / allM.answered) : '—'} />
           </div>
           <div className="flex flex-wrap gap-x-3 gap-y-1 mt-3 text-xs text-gray-500">
             <span>{demoStats.held} held</span>
@@ -523,7 +545,7 @@ export function DailyStats({ rows, events, demoOutcomes }: Props) {
 
         <div className="bg-gray-900 rounded-xl p-5">
           <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">Callback Conversion (all time)</h2>
-          <DayStat label="Callbacks → Demo" value={callbackConversion.rate != null ? pct(callbackConversion.rate) : '—'} />
+          <DayStat label="Callbacks → Demo" info="Of the companies ever marked “Call back later”, the share that later became a booked demo. Measures whether chasing callbacks is worth the time." value={callbackConversion.rate != null ? pct(callbackConversion.rate) : '—'} />
           <p className="text-xs text-gray-600 mt-2">
             {callbackConversion.hadCallback === 0
               ? 'No callbacks logged yet.'
@@ -535,7 +557,10 @@ export function DailyStats({ rows, events, demoOutcomes }: Props) {
       {/* Revenue-tier performance + best time to call */}
       <div className="grid sm:grid-cols-2 gap-4">
         <div className="bg-gray-900 rounded-xl p-5">
-          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">Performance by Revenue Tier</h2>
+          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">
+            Performance by Revenue Tier
+            <Info text="Demo rate per revenue band, using the company's revenue at the time of the call. Bar and percentage are demos ÷ ANSWERED calls in that band, so a band that simply answers more often doesn't look like it converts better. The fraction is demos/answered." />
+          </h2>
           {tierPerf.length === 0 ? (
             <p className="text-xs text-gray-600">Not enough data yet.</p>
           ) : (
@@ -546,7 +571,7 @@ export function DailyStats({ rows, events, demoOutcomes }: Props) {
                   <div className="flex-1 h-2 bg-gray-800 rounded-full overflow-hidden">
                     <div className="h-full bg-white rounded-full" style={{ width: `${Math.min(100, (t.demoRate ?? 0) * 100)}%` }} />
                   </div>
-                  <span className="text-xs text-gray-500 w-24 text-right tabular-nums">{t.demos}/{t.dials} · {t.demoRate != null ? pct(t.demoRate) : '—'}</span>
+                  <span className="text-xs text-gray-500 w-24 text-right tabular-nums">{t.demos}/{t.answered} · {t.demoRate != null ? pct(t.demoRate) : '—'}</span>
                 </div>
               ))}
             </div>
@@ -554,7 +579,10 @@ export function DailyStats({ rows, events, demoOutcomes }: Props) {
         </div>
 
         <div className="bg-gray-900 rounded-xl p-5">
-          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">Best Time to Call (all time)</h2>
+          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">
+            Best Time to Call (all time)
+            <Info text="Pickup rate by hour of day (your local time), from logged calls. Bar and percentage are answered ÷ dials in that hour. Hours with very few dials are noisy — check the dial count beside each bar before trusting it." />
+          </h2>
           {hourly.length === 0 ? (
             <p className="text-xs text-gray-600">Not enough data yet.</p>
           ) : (
@@ -719,19 +747,42 @@ export function DailyStats({ rows, events, demoOutcomes }: Props) {
   )
 }
 
-function DayStat({ label, value }: { label: string; value: string }) {
+/**
+ * Hover explanation for a metric. Uses the native `title` tooltip on purpose:
+ * every table on this page sits inside an `overflow-x-auto` container, and CSS
+ * makes overflow-y compute to `auto` alongside it — so a positioned popup gets
+ * clipped by the scroll box. The visible "?" is what makes the help
+ * discoverable; the browser handles the rest and can never be clipped.
+ */
+function Info({ text }: { text: string }) {
+  return (
+    <span
+      title={text}
+      className="ml-1 inline-flex h-3.5 w-3.5 shrink-0 cursor-help items-center justify-center rounded-full border border-gray-700 text-[9px] font-normal leading-none text-gray-500 align-middle hover:border-gray-500 hover:text-gray-300"
+      aria-label={text}
+    >
+      ?
+    </span>
+  )
+}
+
+function DayStat({ label, value, info }: { label: string; value: string; info?: string }) {
   return (
     <div className="bg-gray-950 rounded-lg p-3">
-      <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-600 block">{label}</span>
+      <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-600 block">
+        {label}{info && <Info text={info} />}
+      </span>
       <span className="text-xl font-bold tabular-nums text-white">{value}</span>
     </div>
   )
 }
 
-function Kpi({ label, children }: { label: string; children: React.ReactNode }) {
+function Kpi({ label, info, children }: { label: string; info?: string; children: React.ReactNode }) {
   return (
     <div className="bg-gray-900 rounded-xl p-4 flex flex-col gap-1">
-      <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">{label}</span>
+      <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+        {label}{info && <Info text={info} />}
+      </span>
       {children}
     </div>
   )
