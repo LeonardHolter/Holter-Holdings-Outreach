@@ -1,6 +1,7 @@
 'use client'
 
 import { usePathname } from 'next/navigation'
+import { Leaderboard } from './Leaderboard'
 
 const LINKS = [
   { href: '/call',       label: 'Call'       },
@@ -14,6 +15,7 @@ export function Nav() {
   const pathname = usePathname()
 
   return (
+    <>
     <header className="shrink-0 border-b border-gray-800 bg-black safe-top">
       <div className="flex items-stretch h-12 px-3 sm:px-4 gap-4">
         {/* Brand mark */}
@@ -50,5 +52,8 @@ export function Nav() {
         </nav>
       </div>
     </header>
+    {/* All-time call leaderboard — every page gets it via Nav. */}
+    <Leaderboard />
+    </>
   )
 }
