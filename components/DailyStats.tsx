@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { Info } from './Info'
 import { format, parseISO } from 'date-fns'
 import type { StatRow, CallEvent, DemoOutcomeCount } from '@/app/stats/page'
 
@@ -71,6 +72,10 @@ const pct = (x: number) => `${Math.round(x * 100)}%`
 // Pickup shown as "60% (430)": the rate alone hides whether it came from 5
 // calls or 500, which is the difference between noise and a real signal.
 const pctOf = (rate: number, n: number) => `${pct(rate)} (${n})`
+// Conversion rates show the whole fraction — "4.7% (12/258)" — so the
+// denominator is verifiable on the page rather than only claimed in a tooltip.
+const pctFrac = (rate: number, num: number, den: number) => `${pct1(rate)} (${num}/${den})`
+const pctFrac0 = (rate: number, num: number, den: number) => `${pct(rate)} (${num}/${den})`
 // One-decimal variant, for low-magnitude rates (e.g. Demo %) where rounding
 // to a whole number hides the difference between e.g. 1.2% and 1.8%.
 const pct1 = (x: number) => `${(x * 100).toFixed(1)}%`
@@ -382,7 +387,7 @@ export function DailyStats({ rows, events, demoOutcomes }: Props) {
         </Kpi>
         <Kpi label="Demo rate (all)" info="Demos booked ÷ ANSWERED calls, all time. Divided by answered rather than total dials — nobody books a demo on a phone that never got picked up, so counting those would just dilute the number by your pickup rate.">
           <span className="text-3xl font-bold tabular-nums text-green-400">{allM.answered ? pct1(allM.demoRate) : '—'}</span>
-          <span className="text-xs text-gray-600">{allM.demos} demos booked</span>
+          <span className="text-xs text-gray-600">{allM.demos} demos ÷ {allM.answered} answered</span>
         </Kpi>
         <Kpi label="Demo won rate (all)" info="Demos marked Won ÷ demos with a decided outcome (Won + Lost), all time. Demos still awaiting an outcome are excluded so a full pipeline doesn't drag the number down.">
           <span className="text-3xl font-bold tabular-nums text-green-400">{demoStats.winRate != null ? pct(demoStats.winRate) : '—'}</span>
@@ -434,11 +439,11 @@ export function DailyStats({ rows, events, demoOutcomes }: Props) {
                     <td className="text-right tabular-nums text-white py-2.5 px-3">{m.calls}</td>
                     <td className="text-right tabular-nums text-gray-300 py-2.5 px-3">{m.calls ? pctOf(m.pickupRate, m.answered) : '—'}</td>
                     <td className="text-right tabular-nums text-green-400 py-2.5 px-3">{m.demos}</td>
-                    <td className="text-right tabular-nums text-gray-300 py-2.5 px-3">{m.answered ? pct1(m.demoRate) : '—'}</td>
-                    <td className="text-right tabular-nums text-green-400 py-2.5 px-3">{m.answered ? pct1(m.wonRate) : '—'}</td>
+                    <td className="text-right tabular-nums text-gray-300 py-2.5 px-3">{m.answered ? pctFrac(m.demoRate, m.demos, m.answered) : '—'}</td>
+                    <td className="text-right tabular-nums text-green-400 py-2.5 px-3">{m.answered ? pctFrac(m.wonRate, m.won, m.answered) : '—'}</td>
                     <td className="text-right tabular-nums text-gray-500 py-2.5 px-3">{m.noAnswer}</td>
                     <td className="text-right tabular-nums text-gray-500 py-2.5 px-3">{m.notInterested}</td>
-                    <td className="text-right tabular-nums text-red-400/80 py-2.5 px-3">{m.calls ? pct(m.notInterestedRate) : '—'}</td>
+                    <td className="text-right tabular-nums text-red-400/80 py-2.5 px-3">{m.answered ? pctFrac0(m.notInterestedRate, m.notInterested, m.answered) : '—'}</td>
                     <td className="text-right tabular-nums text-gray-500 py-2.5 pl-3">{m.callback}</td>
                   </tr>
                 )
@@ -451,11 +456,11 @@ export function DailyStats({ rows, events, demoOutcomes }: Props) {
                     <td className="text-right tabular-nums text-white py-2.5 px-3">{m.calls}</td>
                     <td className="text-right tabular-nums text-gray-200 py-2.5 px-3">{m.calls ? pctOf(m.pickupRate, m.answered) : '—'}</td>
                     <td className="text-right tabular-nums text-green-400 py-2.5 px-3">{m.demos}</td>
-                    <td className="text-right tabular-nums text-gray-200 py-2.5 px-3">{m.answered ? pct1(m.demoRate) : '—'}</td>
-                    <td className="text-right tabular-nums text-green-300 py-2.5 px-3">{m.answered ? pct1(m.wonRate) : '—'}</td>
+                    <td className="text-right tabular-nums text-gray-200 py-2.5 px-3">{m.answered ? pctFrac(m.demoRate, m.demos, m.answered) : '—'}</td>
+                    <td className="text-right tabular-nums text-green-300 py-2.5 px-3">{m.answered ? pctFrac(m.wonRate, m.won, m.answered) : '—'}</td>
                     <td className="text-right tabular-nums text-gray-500 py-2.5 px-3">{m.noAnswer}</td>
                     <td className="text-right tabular-nums text-gray-500 py-2.5 px-3">{m.notInterested}</td>
-                    <td className="text-right tabular-nums text-red-400/80 py-2.5 px-3">{m.calls ? pct(m.notInterestedRate) : '—'}</td>
+                    <td className="text-right tabular-nums text-red-400/80 py-2.5 px-3">{m.answered ? pctFrac0(m.notInterestedRate, m.notInterested, m.answered) : '—'}</td>
                     <td className="text-right tabular-nums text-gray-500 py-2.5 pl-3">{m.callback}</td>
                   </tr>
                 )
@@ -496,7 +501,7 @@ export function DailyStats({ rows, events, demoOutcomes }: Props) {
                         </span>
                       </td>
                       <td className="text-right tabular-nums text-white py-2.5 px-3">{em.dialsPerDemo != null ? em.dialsPerDemo.toFixed(0) : '—'}</td>
-                      <td className="text-right tabular-nums text-blue-400 py-2.5 px-3">{em.dmReachedRate != null ? pct(em.dmReachedRate) : '—'}</td>
+                      <td className="text-right tabular-nums text-blue-400 py-2.5 px-3">{em.dmReachedRate != null ? pctFrac0(em.dmReachedRate, em.dmReached, em.answered) : '—'}</td>
                       <td className="text-right tabular-nums text-green-400 py-2.5 pl-3">{em.dmToDemoRate != null ? pct(em.dmToDemoRate) : '—'}</td>
                     </tr>
                   )
@@ -507,7 +512,7 @@ export function DailyStats({ rows, events, demoOutcomes }: Props) {
                     <tr className="font-semibold">
                       <td className="py-2.5 pr-3 text-gray-300">Team total</td>
                       <td className="text-right tabular-nums text-white py-2.5 px-3">{em.dialsPerDemo != null ? em.dialsPerDemo.toFixed(0) : '—'}</td>
-                      <td className="text-right tabular-nums text-blue-300 py-2.5 px-3">{em.dmReachedRate != null ? pct(em.dmReachedRate) : '—'}</td>
+                      <td className="text-right tabular-nums text-blue-300 py-2.5 px-3">{em.dmReachedRate != null ? pctFrac0(em.dmReachedRate, em.dmReached, em.answered) : '—'}</td>
                       <td className="text-right tabular-nums text-green-300 py-2.5 pl-3">{em.dmToDemoRate != null ? pct(em.dmToDemoRate) : '—'}</td>
                     </tr>
                   )
@@ -744,25 +749,6 @@ export function DailyStats({ rows, events, demoOutcomes }: Props) {
         )
       })()}
     </div>
-  )
-}
-
-/**
- * Hover explanation for a metric. Uses the native `title` tooltip on purpose:
- * every table on this page sits inside an `overflow-x-auto` container, and CSS
- * makes overflow-y compute to `auto` alongside it — so a positioned popup gets
- * clipped by the scroll box. The visible "?" is what makes the help
- * discoverable; the browser handles the rest and can never be clipped.
- */
-function Info({ text }: { text: string }) {
-  return (
-    <span
-      title={text}
-      className="ml-1 inline-flex h-3.5 w-3.5 shrink-0 cursor-help items-center justify-center rounded-full border border-gray-700 text-[9px] font-normal leading-none text-gray-500 align-middle hover:border-gray-500 hover:text-gray-300"
-      aria-label={text}
-    >
-      ?
-    </span>
   )
 }
 

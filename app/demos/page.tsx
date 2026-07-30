@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 import { query } from '@/lib/db'
 import { Nav } from '@/components/Nav'
 import DemoCard, { type DemoCompany } from '@/components/DemoCard'
+import { WonRow, type WonCompany } from '@/components/WonRow'
 
 async function fetchBookedDemos(): Promise<DemoCompany[]> {
   // Resolved demos (Won/Lost) drop off the active list once an outcome is set.
@@ -44,15 +45,6 @@ async function fetchBookedDemos(): Promise<DemoCompany[]> {
     booked_at: toIso(r.booked_at),
     recording_at: toIso(r.recording_at),
   })) as DemoCompany[]
-}
-
-interface WonCompany {
-  id: string
-  company_name: string | null
-  state: string | null
-  who_called: string | null
-  phone_number: string | null
-  last_reach_out: string | null
 }
 
 /** Companies whose demo was marked Won. Kept OUT of the active list above —
@@ -160,25 +152,7 @@ export default async function DemosPage() {
               </div>
               <div className="rounded-xl border border-gray-800 divide-y divide-gray-800 overflow-hidden">
                 {won.map(c => (
-                  <div key={c.id} className="flex items-center gap-3 px-4 py-3 bg-gray-900/40">
-                    <span className="text-sm shrink-0" aria-hidden>🏆</span>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-sm font-medium text-white truncate">
-                        {c.company_name ?? 'Unnamed company'}
-                      </div>
-                      <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-[11px] text-gray-500">
-                        {c.state && <span>{c.state}</span>}
-                        {c.who_called && <span>· closed by {c.who_called}</span>}
-                        {c.last_reach_out && <span>· {c.last_reach_out}</span>}
-                      </div>
-                    </div>
-                    {c.phone_number && (
-                      <a href={`tel:${c.phone_number}`}
-                        className="shrink-0 font-mono text-xs text-gray-400 hover:text-white transition-colors">
-                        {c.phone_number}
-                      </a>
-                    )}
-                  </div>
+                  <WonRow key={c.id} company={c} />
                 ))}
               </div>
             </div>
