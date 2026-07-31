@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import type { LeaderRow } from '@/app/api/leaderboard/route'
 
-// All-time call leaderboard, pinned in the nav on every page.
+// All-time WON deals leaderboard, pinned in the nav on every page.
 //
 // Refreshes on route change (so navigating updates it) and every 60s (so it
 // stays live during a long stretch on /call, where you never navigate).
@@ -37,11 +37,9 @@ export function Leaderboard() {
   }, [pathname])
 
   if (!leaders || leaders.length === 0) return null
-  const total = leaders.reduce((s, l) => s + l.calls, 0)
-  if (total === 0) return null
 
-  const top = leaders[0].calls
-  const runnerUp = leaders[1]?.calls ?? 0
+  const top = leaders[0].wins
+  const runnerUp = leaders[1]?.wins ?? 0
   const lead = top - runnerUp
 
   return (
@@ -49,7 +47,7 @@ export function Leaderboard() {
       <div className="flex items-center gap-3 px-3 sm:px-4 py-1.5 overflow-x-auto scrollbar-none"
         style={{ WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none' }}>
         <span className="shrink-0 font-mono text-[10px] uppercase tracking-widest text-gray-600">
-          All-time calls
+          All-time wins
         </span>
 
         {leaders.map((l, i) => {
@@ -61,7 +59,7 @@ export function Leaderboard() {
                 {l.name}
               </span>
               <span className={`tabular-nums font-semibold ${isLeader ? 'text-white' : 'text-gray-300'}`}>
-                {l.calls.toLocaleString('nb-NO')}
+                {l.wins.toLocaleString('nb-NO')}
               </span>
             </span>
           )
