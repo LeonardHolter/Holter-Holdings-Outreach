@@ -385,9 +385,9 @@ export function DailyStats({ rows, events, demoOutcomes }: Props) {
           <span className="text-3xl font-bold tabular-nums text-white">{weekM.calls}</span>
           <span className="text-xs text-gray-600">{pct(weekM.pickupRate)} pickup ({weekM.answered})</span>
         </Kpi>
-        <Kpi label="Demo rate (all)" info="Demos booked ÷ ANSWERED calls, all time. Divided by answered rather than total dials — nobody books a demo on a phone that never got picked up, so counting those would just dilute the number by your pickup rate.">
-          <span className="text-3xl font-bold tabular-nums text-green-400">{allM.answered ? pct1(allM.demoRate) : '—'}</span>
-          <span className="text-xs text-gray-600">{allM.demos} demos ÷ {allM.answered} answered</span>
+        <Kpi label="Won rate (all)" info="Deals won ÷ ANSWERED calls, all time. Divided by answered rather than total dials — nobody buys off a phone that never got picked up, so counting those would just dilute the number by your pickup rate.">
+          <span className="text-3xl font-bold tabular-nums text-green-400">{allM.answered ? pct1(allM.wonRate) : '—'}</span>
+          <span className="text-xs text-gray-600">{allM.won} won ÷ {allM.answered} answered</span>
         </Kpi>
         <Kpi label="Demo won rate (all)" info="Demos marked Won ÷ demos with a decided outcome (Won + Lost), all time. Demos still awaiting an outcome are excluded so a full pipeline doesn't drag the number down.">
           <span className="text-3xl font-bold tabular-nums text-green-400">{demoStats.winRate != null ? pct(demoStats.winRate) : '—'}</span>
