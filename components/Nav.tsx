@@ -4,11 +4,12 @@ import { usePathname } from 'next/navigation'
 import { Leaderboard } from './Leaderboard'
 
 const LINKS = [
-  { href: '/call',       label: 'Call'       },
-  { href: '/pipeline',   label: 'Companies'  },
-  { href: '/demos',      label: 'Demos'      },
-  { href: '/stats',      label: 'Stats'      },
-  { href: '/recordings', label: 'Recordings' },
+  { href: '/call',            label: 'Call'       },
+  { href: '/pipeline',        label: 'Companies'  },
+  { href: '/demos',           label: 'Demos'      },
+  { href: '/lead-behandling', label: 'Behandling' },
+  { href: '/stats',           label: 'Stats'      },
+  { href: '/recordings',      label: 'Recordings' },
 ]
 
 export function Nav() {
@@ -52,7 +53,7 @@ export function Nav() {
         </nav>
       </div>
     </header>
-    {/* All-time call leaderboard — every page gets it via Nav. */}
+    {/* All-time wins leaderboard — every page gets it via Nav. */}
     <Leaderboard />
     </>
   )

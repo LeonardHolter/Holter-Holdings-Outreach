@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Info } from './Info'
 import { format, parseISO } from 'date-fns'
 import type { StatRow, CallEvent, DemoOutcomeCount } from '@/app/stats/page'
+import { UNDER_CONSIDERATION } from '@/types'
 
 interface DayNote {
   id?: string
@@ -277,12 +278,16 @@ export function DailyStats({ rows, events, demoOutcomes }: Props) {
     const noShow = map.get('No-show') ?? 0
     const won = map.get('Won') ?? 0
     const lost = map.get('Lost') ?? 0
+    // Parked on /lead-behandling: the demo happened, the decision hasn't. Kept
+    // out of both rates — it is neither a settled show nor a settled outcome —
+    // but counted in totalBooked so the funnel still adds up.
+    const considering = map.get(UNDER_CONSIDERATION) ?? 0
     const pending = map.get(null) ?? 0
     const resolvedShow = held + noShow
     const resolvedOutcome = won + lost
     return {
-      held, noShow, won, lost, pending,
-      totalBooked: held + noShow + won + lost + pending,
+      held, noShow, won, lost, considering, pending,
+      totalBooked: held + noShow + won + lost + considering + pending,
       showRate: resolvedShow ? held / resolvedShow : null,
       winRate: resolvedOutcome ? won / resolvedOutcome : null,
     }
@@ -543,6 +548,9 @@ export function DailyStats({ rows, events, demoOutcomes }: Props) {
             <span>{demoStats.noShow} no-show</span>
             <span>{demoStats.won} won</span>
             <span>{demoStats.lost} lost</span>
+            {demoStats.considering > 0 && (
+              <span className="text-amber-300/80">{demoStats.considering} under behandling</span>
+            )}
             {demoStats.pending > 0 && <span>{demoStats.pending} pending outcome</span>}
           </div>
           {demoStats.totalBooked === 0 && <p className="text-xs text-gray-600 mt-2">No demos booked yet.</p>}

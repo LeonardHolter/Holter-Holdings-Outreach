@@ -4,13 +4,14 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { addDays, format, parseISO, isPast, isToday, startOfDay } from 'date-fns'
 import { toast } from 'sonner'
 import type { Company } from '@/types'
-import { DEMO_OUTCOMES, DEMO_TOUCHPOINTS } from '@/types'
+import { DEMO_OUTCOMES, DEMO_TOUCHPOINTS, UNDER_CONSIDERATION } from '@/types'
 
-function demoOutcomeStyle(o: string): string {
+export function demoOutcomeStyle(o: string): string {
   if (o === 'Won') return 'border-white bg-white text-black font-bold'
   if (o === 'Lost') return 'border-gray-700 bg-gray-900 text-gray-500 line-through'
   if (o === 'No-show') return 'border-gray-600 bg-gray-900 text-gray-400'
   if (o === 'Held') return 'border-gray-300 bg-gray-800 text-white'
+  if (o === UNDER_CONSIDERATION) return 'border-amber-400 bg-amber-400/10 text-amber-300'
   return 'border-gray-700 bg-gray-800 text-gray-400'
 }
 
@@ -425,12 +426,21 @@ export default function DemoCard({
                   key={o}
                   disabled={saving}
                   onClick={() => patch({ demo_outcome: c.demo_outcome === o ? null : o })}
+                  // "Under consideration" is far longer than the rest — give it
+                  // its own full-width row instead of squeezing the grid.
                   className={`text-center px-2 py-1.5 rounded-lg border text-xs transition-colors disabled:opacity-40 ${
+                    o === UNDER_CONSIDERATION ? 'col-span-4' : ''
+                  } ${
                     c.demo_outcome === o ? demoOutcomeStyle(o) : 'border-gray-700 bg-gray-800 text-gray-400 hover:border-gray-600 hover:text-gray-300'
                   }`}
                 >{o}</button>
               ))}
             </div>
+            {c.demo_outcome === UNDER_CONSIDERATION && (
+              <p className="mt-1.5 text-[11px] text-amber-300/70">
+                Parked — behandles videre på <a href="/lead-behandling" className="underline">Lead behandling</a>.
+              </p>
+            )}
           </div>
 
           {/* Next follow-up date setter */}

@@ -103,11 +103,17 @@ export const TEAM_MEMBERS = [
   'William',
 ]
 
+// Marking a demo "Under consideration" parks the lead: it leaves the active
+// /demos cadence and shows up on /lead-behandling instead, where it gets a
+// logged follow-up and a next follow-up date until it turns into Won or Lost.
+export const UNDER_CONSIDERATION = 'Under consideration'
+
 export const DEMO_OUTCOMES = [
   'Held',
   'No-show',
   'Won',
   'Lost',
+  UNDER_CONSIDERATION,
 ]
 
 // Follow-up cadence after a demo is booked. Offsets are days after the

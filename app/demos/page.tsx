@@ -6,7 +6,9 @@ import DemoCard, { type DemoCompany } from '@/components/DemoCard'
 import { WonRow, type WonCompany } from '@/components/WonRow'
 
 async function fetchBookedDemos(): Promise<DemoCompany[]> {
-  // Resolved demos (Won/Lost) drop off the active list once an outcome is set.
+  // Resolved demos (Won/Lost) drop off the active list once an outcome is set,
+  // as do leads parked "Under consideration" — those move to /lead-behandling,
+  // which runs its own follow-up log instead of this fixed touchpoint cadence.
   // Each demo carries its booking-call recording (the most recent playable
   // recording; sub-minute clips are hidden app-wide) and the date the demo
   // was booked (latest 'Demo booked' call event) to anchor the touchpoint
@@ -34,7 +36,7 @@ async function fetchBookedDemos(): Promise<DemoCompany[]> {
        WHERE company_id = c.id AND response = 'Demo booked'
      ) b ON true
      WHERE c.reach_out_response = 'Demo booked'
-       AND (c.demo_outcome IS NULL OR c.demo_outcome NOT IN ('Won', 'Lost'))
+       AND (c.demo_outcome IS NULL OR c.demo_outcome NOT IN ('Won', 'Lost', 'Under consideration'))
      ORDER BY c.next_reach_out ASC NULLS LAST`
   )
   // pg returns TIMESTAMPTZ columns as JS Date objects — normalize to ISO
@@ -51,18 +53,43 @@ async function fetchBookedDemos(): Promise<DemoCompany[]> {
  *  a won customer has no follow-up cadence left to run, so mixing them in
  *  would bury the demos that still need chasing. Newest win first. */
 async function fetchWonCompanies(): Promise<WonCompany[]> {
+  // Attribution is best-effort by design: companies.who_called is only written
+  // when an outcome is saved through the dialer, so a company marked Won by
+  // hand in the Companies table has none. Prefer whoever actually booked the
+  // demo (call_events), fall back to the last caller, and finally infer from
+  // the per-person counters when only one of us ever dialled it.
   const rows = await query(
-    `SELECT id, company_name, state, who_called, phone_number, last_reach_out
-     FROM companies
-     WHERE demo_outcome = 'Won'
-     ORDER BY last_reach_out DESC NULLS LAST, company_name ASC`
+    `SELECT c.id, c.company_name, c.state, c.who_called, c.phone_number,
+            c.last_reach_out, c.calls_leonard, c.calls_william,
+            b.booked_by
+     FROM companies c
+     LEFT JOIN LATERAL (
+       SELECT caller_name AS booked_by
+       FROM call_events
+       WHERE company_id = c.id AND response = 'Demo booked' AND caller_name IS NOT NULL
+       ORDER BY created_at DESC
+       LIMIT 1
+     ) b ON true
+     WHERE c.demo_outcome = 'Won'
+     ORDER BY c.last_reach_out DESC NULLS LAST, c.company_name ASC`
   )
-  return (rows as Record<string, unknown>[]).map(r => ({
-    ...r,
-    last_reach_out: r.last_reach_out instanceof Date
-      ? r.last_reach_out.toISOString().slice(0, 10)
-      : (r.last_reach_out as string | null),
-  })) as WonCompany[]
+  return (rows as Record<string, unknown>[]).map(r => {
+    const leonard = Number(r.calls_leonard) || 0
+    const william = Number(r.calls_william) || 0
+    const onlyDialler =
+      leonard > 0 && william === 0 ? 'Leonard' : william > 0 && leonard === 0 ? 'William' : null
+    return {
+      id: r.id as string,
+      company_name: r.company_name as string | null,
+      state: r.state as string | null,
+      phone_number: r.phone_number as string | null,
+      closedBy: (r.booked_by as string | null) ?? (r.who_called as string | null) ?? onlyDialler,
+      last_reach_out:
+        r.last_reach_out instanceof Date
+          ? r.last_reach_out.toISOString().slice(0, 10)
+          : (r.last_reach_out as string | null),
+    }
+  })
 }
 
 // Completed touchpoints for the listed demos, keyed by company id.
