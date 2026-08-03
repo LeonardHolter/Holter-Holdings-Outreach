@@ -15,7 +15,7 @@ interface DayNote {
   company_id?: string | null
 }
 
-const GOAL = 100
+export const GOAL = 60
 const LEONARD_COLOR = '#ffffff' // white — monochrome theme
 const WILLIAM_COLOR = '#7a7a7a' // mid gray — monochrome theme
 const CALLERS = ['Leonard', 'William'] as const
@@ -26,6 +26,52 @@ function localDateStr(d: Date): string {
   const m = String(d.getMonth() + 1).padStart(2, '0')
   const day = String(d.getDate()).padStart(2, '0')
   return `${y}-${m}-${day}`
+}
+
+/** Shift a YYYY-MM-DD day string by whole days, staying in local time so it
+ *  agrees with localDateStr across DST. */
+function shiftDay(day: string, by: number): string {
+  const [y, m, d] = day.split('-').map(Number)
+  const x = new Date(y, m - 1, d)
+  x.setDate(x.getDate() + by)
+  return localDateStr(x)
+}
+
+/**
+ * Streak of consecutive days that made the daily goal, counting back from
+ * today — under the ±1 rule.
+ *
+ * The ±1 rule: a day that fell short of the goal still counts if the day
+ * immediately before OR immediately after hit double it. You can make a day
+ * up by doubling on either side of it, but only one day out — a double two
+ * days away rescues nothing, and a short day with no adjacent double-day
+ * breaks the streak.
+ *
+ * Today never counts against you: an unfinished day that hasn't reached the
+ * goal yet just isn't part of the streak, so counting starts at yesterday
+ * instead of resetting to zero. (Tomorrow can still rescue today later — the
+ * streak is recomputed from the data every time, so it repairs itself.)
+ *
+ * The walk stops at the first day anyone ever logged a call. Without that
+ * floor a double day would rescue the empty day before it, and a first day of
+ * 120 would hand you a streak day from before the team existed.
+ */
+export function callStreak(totals: Map<string, number>, today: string, goal = GOAL): number {
+  const at = (d: string) => totals.get(d) ?? 0
+  const qualifies = (d: string) =>
+    at(d) >= goal || at(shiftDay(d, -1)) >= goal * 2 || at(shiftDay(d, 1)) >= goal * 2
+
+  // YYYY-MM-DD sorts lexicographically, so this is the earliest logged day.
+  const firstLogged = [...totals.keys()].sort()[0]
+  if (!firstLogged) return 0
+
+  let cur = qualifies(today) ? today : shiftDay(today, -1)
+  let streak = 0
+  while (cur >= firstLogged && qualifies(cur)) {
+    streak++
+    cur = shiftDay(cur, -1)
+  }
+  return streak
 }
 
 interface Metrics {
@@ -237,18 +283,20 @@ export function DailyStats({ rows, events, demoOutcomes }: Props) {
     return m
   }, [rows])
 
-  // Activity streak: consecutive days (ending today, or yesterday if today is
-  // still empty) that had at least one call. Uses local dates.
-  const streak = useMemo(() => {
-    const cur = new Date()
-    if (!((byDate.get(localDateStr(cur))?.total ?? 0) > 0)) cur.setDate(cur.getDate() - 1)
-    let s = 0
-    while ((byDate.get(localDateStr(cur))?.total ?? 0) > 0) {
-      s++
-      cur.setDate(cur.getDate() - 1)
-    }
-    return s
-  }, [byDate])
+  // Goal streak under the ±1 rule — see callStreak.
+  const dailyTotals = useMemo(
+    () => new Map([...byDate].map(([d, v]) => [d, v.total])),
+    [byDate],
+  )
+  const streak = useMemo(() => callStreak(dailyTotals, today), [dailyTotals, today])
+
+  // Was today's shortfall covered by a neighbouring double day, rather than by
+  // hitting the goal outright? Worth saying out loud — it's the difference
+  // between a streak you earned today and one yesterday is holding up.
+  const todayRescued = useMemo(
+    () => (dailyTotals.get(today) ?? 0) < GOAL && (dailyTotals.get(shiftDay(today, -1)) ?? 0) >= GOAL * 2,
+    [dailyTotals, today],
+  )
 
   const inPeriod = (date: string) =>
     period === 'all' ? true : period === 'today' ? date === today : date >= weekAgo
@@ -360,7 +408,10 @@ export function DailyStats({ rows, events, demoOutcomes }: Props) {
     <div className="max-w-4xl mx-auto space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-white">Call Stats</h1>
-        <p className="text-gray-400 text-sm mt-1">Goal: {GOAL} calls per day</p>
+        <p className="text-gray-400 text-sm mt-1">
+          Goal: {GOAL} calls per day
+          <span className="text-gray-600"> · miss one and {GOAL * 2} the day before or after saves it</span>
+        </p>
       </div>
 
       {/* KPI row */}
@@ -379,12 +430,16 @@ export function DailyStats({ rows, events, demoOutcomes }: Props) {
             </div>
           )}
         </Kpi>
-        <Kpi label="Streak" info="Consecutive days with at least one logged call, counting back from today (or from yesterday if you haven't started yet). Breaks the first day with zero calls.">
+        <Kpi label="Streak" info={`Consecutive days that made the ${GOAL}-call goal, counting back from today. The ±1 rule: a day you fell short still counts if the day right before or right after hit ${GOAL * 2} — you can make a day up by doubling on either side of it, but only one day out. A double two days away rescues nothing. Today never counts against you: an unfinished day just isn't in the streak yet.`}>
           <div className="flex items-end gap-2">
             <span className={`text-3xl font-bold tabular-nums ${streak > 0 ? 'text-orange-400' : 'text-white'}`}>{streak}</span>
             <span className="mb-1 text-gray-500 text-sm">{streak === 1 ? 'day' : 'days'}</span>
           </div>
-          {streak > 0 && <span className="text-xs text-orange-400/70">🔥 in a row</span>}
+          {streak > 0 && (
+            <span className="text-xs text-orange-400/70">
+              {todayRescued ? '±1 rule saved today' : '🔥 in a row'}
+            </span>
+          )}
         </Kpi>
         <Kpi label="This week" info="Calls logged in the last 7 days. The line underneath is pickup: answered ÷ calls, with the answered count in brackets.">
           <span className="text-3xl font-bold tabular-nums text-white">{weekM.calls}</span>
