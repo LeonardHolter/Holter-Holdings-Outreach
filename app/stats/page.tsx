@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 import { query } from '@/lib/db'
 import { Nav } from '@/components/Nav'
 import { DailyStats } from '@/components/DailyStats'
+import { winsByCaller, type LeaderRow } from '@/lib/winsByCaller'
 
 // One row per (day, caller, outcome). The component derives all daily / weekly
 // / overall + per-person metrics from these.
@@ -120,18 +121,19 @@ async function fetchDemoOutcomes(): Promise<DemoOutcomeCount[]> {
 }
 
 export default async function StatsPage() {
-  const [rows, events, demoOutcomes, industryWins] = await Promise.all([
+  const [rows, events, demoOutcomes, industryWins, callerWins] = await Promise.all([
     fetchStatRows(),
     fetchCallEvents(),
     fetchDemoOutcomes(),
     fetchIndustryWins(),
+    winsByCaller().catch((): LeaderRow[] => []),
   ])
 
   return (
     <div className="flex flex-col h-[100dvh] overflow-hidden bg-gray-950">
       <Nav />
       <div className="flex-1 overflow-auto px-4 py-6">
-        <DailyStats rows={rows} events={events} demoOutcomes={demoOutcomes} industryWins={industryWins} />
+        <DailyStats rows={rows} events={events} demoOutcomes={demoOutcomes} industryWins={industryWins} callerWins={callerWins} />
       </div>
     </div>
   )

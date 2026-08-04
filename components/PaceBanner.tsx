@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { GOAL } from '@/components/DailyStats'
+import { GOAL, TEAM_GOAL } from '@/components/DailyStats'
 import { avgSecondsPerCall, estimatedFinish, todaysTarget } from '@/lib/pace'
 import { CALL_CUTOFF_HOUR, osloHour } from '@/lib/callingHours'
 
@@ -62,8 +62,11 @@ export function PaceBanner() {
   // Never show one caller's numbers under another caller's name mid-switch.
   if (!data || data.caller !== caller) return null
 
-  const target = todaysTarget(data.yesterday, data.dayBefore)
-  const owes = target > GOAL
+  // Each caller answers for their own 60; with no caller picked the banner
+  // judges the team against its 120.
+  const goal = caller ? GOAL : TEAM_GOAL
+  const target = todaysTarget(data.yesterday, data.dayBefore, goal)
+  const owes = target > goal
   const dayOff = target === 0
   const done = data.callsToday >= target
   const perCall = avgSecondsPerCall(data.timestamps)
@@ -90,13 +93,13 @@ export function PaceBanner() {
         </span>
 
         {owes && !done && (
-          <span className="text-amber-300" title={`${caller ?? 'Teamet'} tok ${data.yesterday} samtaler i går. ±1-regelen: to påfølgende dager må summere til ${GOAL * 2}, så i dag trengs ${target} (${data.yesterday} + ${target} = ${GOAL * 2}).`}>
+          <span className="text-amber-300" title={`${caller ?? 'Teamet'} tok ${data.yesterday} samtaler i går. ±1-regelen: to påfølgende dager må summere til ${goal * 2}, så i dag trengs ${target} (${data.yesterday} + ${target} = ${goal * 2}).`}>
             {target} i dag — skylder fra i går (±1)
           </span>
         )}
 
-        {!owes && !dayOff && target < GOAL && !done && (
-          <span className="text-gray-500" title={`${data.yesterday} i går + ${target} i dag = ${GOAL * 2} over to dager.`}>
+        {!owes && !dayOff && target < goal && !done && (
+          <span className="text-gray-500" title={`${data.yesterday} i går + ${target} i dag = ${goal * 2} over to dager.`}>
             bare {target} i dag ({data.yesterday} i går)
           </span>
         )}

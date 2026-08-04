@@ -15,7 +15,12 @@ interface DayNote {
   company_id?: string | null
 }
 
+// Per-person daily goal, and the team's: two callers × 60. The stats page
+// (Today KPI, streak, header) judges the TEAM; the pace banner on /call
+// judges each caller against their own 60. The ±1 rule scales with whichever
+// goal applies: 2× the goal over two consecutive days.
 export const GOAL = 60
+export const TEAM_GOAL = 120
 const LEONARD_COLOR = '#ffffff' // white — monochrome theme
 const WILLIAM_COLOR = '#7a7a7a' // mid gray — monochrome theme
 const CALLERS = ['Leonard', 'William'] as const
@@ -257,9 +262,11 @@ interface Props {
   events: CallEvent[]
   demoOutcomes: DemoOutcomeCount[]
   industryWins?: IndustryWinCount[]
+  /** All-time wins per caller, attributed exactly like the nav leaderboard. */
+  callerWins?: { name: string; wins: number }[]
 }
 
-export function DailyStats({ rows, events, demoOutcomes, industryWins = [] }: Props) {
+export function DailyStats({ rows, events, demoOutcomes, industryWins = [], callerWins = [] }: Props) {
   // Default to all-time: the Breakdown answers "how are we doing", and on a
   // quiet morning a 'today' default shows an empty table that reads like the
   // data is broken.
@@ -333,7 +340,7 @@ export function DailyStats({ rows, events, demoOutcomes, industryWins = [] }: Pr
     () => new Map([...byDate].map(([d, v]) => [d, v.total])),
     [byDate],
   )
-  const streak = useMemo(() => callStreak(dailyTotals, today), [dailyTotals, today])
+  const streak = useMemo(() => callStreak(dailyTotals, today, TEAM_GOAL), [dailyTotals, today])
 
   // Was today's shortfall covered by yesterday's surplus (the two-day 120),
   // rather than by hitting the goal outright? Worth saying out loud — it's
@@ -341,7 +348,7 @@ export function DailyStats({ rows, events, demoOutcomes, industryWins = [] }: Pr
   // holding up.
   const todayRescued = useMemo(() => {
     const t = dailyTotals.get(today) ?? 0
-    return t < GOAL && t + (dailyTotals.get(shiftDay(today, -1)) ?? 0) >= GOAL * 2
+    return t < TEAM_GOAL && t + (dailyTotals.get(shiftDay(today, -1)) ?? 0) >= TEAM_GOAL * 2
   }, [dailyTotals, today])
 
   const inPeriod = (date: string) =>
@@ -355,7 +362,7 @@ export function DailyStats({ rows, events, demoOutcomes, industryWins = [] }: Pr
   const todayM = aggregate(rows.filter(r => r.date === today))
   const weekM = aggregate(rows.filter(r => r.date >= weekAgo))
   const allM = aggregate(rows)
-  const goalMet = todayM.calls >= GOAL
+  const goalMet = todayM.calls >= TEAM_GOAL
 
   // Event-log-derived metrics, filtered by the same period tab as Breakdown.
   const periodEvents = useMemo(
@@ -457,14 +464,14 @@ export function DailyStats({ rows, events, demoOutcomes, industryWins = [] }: Pr
       <div>
         <h1 className="text-2xl font-bold text-white">Call Stats</h1>
         <p className="text-gray-400 text-sm mt-1">
-          Goal: {GOAL} calls per day
-          <span className="text-gray-600"> · or {GOAL * 2} spread over two consecutive days (±1)</span>
+          Goal: {TEAM_GOAL} calls per day as a team ({GOAL} each)
+          <span className="text-gray-600"> · or {TEAM_GOAL * 2} spread over two consecutive days (±1)</span>
         </p>
       </div>
 
       {/* KPI row */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-        <Kpi label="Today" info={`Calls you logged today (Oslo time). Every saved outcome counts as one call — a re-dial of the same company counts again. Goal is ${GOAL}/day.`}>
+        <Kpi label="Today" info={`Calls you logged today (Oslo time). Every saved outcome counts as one call — a re-dial of the same company counts again. Team goal is ${TEAM_GOAL}/day — ${GOAL} per caller.`}>
           <div className="flex items-end gap-2">
             <span className="text-3xl font-bold tabular-nums text-white">{todayM.calls}</span>
             {goalMet && <span className="mb-1 text-white text-sm font-medium">✓ goal</span>}
@@ -472,13 +479,13 @@ export function DailyStats({ rows, events, demoOutcomes, industryWins = [] }: Pr
           {!goalMet && (
             <div className="mt-1">
               <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
-                <div className="h-full bg-white rounded-full" style={{ width: `${Math.min(100, (todayM.calls / GOAL) * 100)}%` }} />
+                <div className="h-full bg-white rounded-full" style={{ width: `${Math.min(100, (todayM.calls / TEAM_GOAL) * 100)}%` }} />
               </div>
-              <span className="text-xs text-gray-600 mt-0.5 block">{Math.max(0, GOAL - todayM.calls)} to go</span>
+              <span className="text-xs text-gray-600 mt-0.5 block">{Math.max(0, TEAM_GOAL - todayM.calls)} to go</span>
             </div>
           )}
         </Kpi>
-        <Kpi label="Streak" info={`Consecutive days that made the ${GOAL}-call goal, counting back from today. The ±1 rule: ${GOAL * 2} over two consecutive days, distributed however you like — 8 one day and ${GOAL * 2 - 8} the next works, and ${GOAL * 2} in one day buys the day before or after off. The buffer is exactly one day: a shortfall can only borrow from its immediate neighbours. Today never counts against you: an unfinished day just isn't in the streak yet.`}>
+        <Kpi label="Streak" info={`Consecutive days the TEAM made its ${TEAM_GOAL}-call goal, counting back from today. The ±1 rule: ${TEAM_GOAL * 2} over two consecutive days, distributed however you like — a slow day and a monster day next to it work, and ${TEAM_GOAL * 2} in one day buys the day before or after off. The buffer is exactly one day: a shortfall can only borrow from its immediate neighbours. Today never counts against you: an unfinished day just isn't in the streak yet.`}>
           <div className="flex items-end gap-2">
             <span className={`text-3xl font-bold tabular-nums ${streak > 0 ? 'text-orange-400' : 'text-white'}`}>{streak}</span>
             <span className="mb-1 text-gray-500 text-sm">{streak === 1 ? 'day' : 'days'}</span>
@@ -578,28 +585,30 @@ export function DailyStats({ rows, events, demoOutcomes, industryWins = [] }: Pr
         </div>
       </div>
 
-      {/* Sales performance: dials/demo, decision-maker conversion */}
+      {/* Sales performance: who turns conversations into customers */}
       <div className="bg-gray-900 rounded-xl p-5">
         <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
           <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Sales Performance</h2>
-          <span className="text-[10px] text-gray-600">{period === 'today' ? 'Today' : period === 'week' ? 'This week' : 'All time'}</span>
+          <span className="text-[10px] text-gray-600">All time</span>
         </div>
         {events.length === 0 ? (
           <p className="text-xs text-gray-600">No logged calls yet — these numbers start filling in as you use the dialer.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm min-w-[520px]">
+            <table className="w-full text-sm min-w-[420px]">
               <thead>
                 <tr className="text-xs text-gray-500 uppercase tracking-wider border-b border-gray-800">
                   <th className="text-left font-semibold py-2 pr-3">Caller</th>
-                  <th className="text-right font-semibold py-2 px-3">Dials&nbsp;/&nbsp;Demo<Info text="Total dials ÷ demos booked. Deliberately per DIAL, not per answered call — it answers &quot;how much dialling does one demo cost me&quot;, which is a volume question. Lower is better." /></th>
-                  <th className="text-right font-semibold py-2 px-3">Reached&nbsp;DM&nbsp;%<Info text="Calls where you toggled &quot;Reached decision-maker&quot; ÷ ANSWERED calls. You can only reach a decision-maker in a conversation, so unanswered dials are excluded. Only counts calls logged since that toggle shipped." /></th>
-                  <th className="text-right font-semibold py-2 pl-3">DM&nbsp;→&nbsp;Demo&nbsp;%<Info text="Demos booked ÷ calls where you reached the decision-maker. Measures your pitch once you have the right person on the line — the pure closing number." /></th>
+                  <th className="text-right font-semibold py-2 px-3">Dials<Info text="All logged calls by this caller, all time." /></th>
+                  <th className="text-right font-semibold py-2 px-3">Won<Info text="Deals won, attributed like the leaderboard: whoever booked the demo, else the last caller, else the only person who ever dialled the company." /></th>
+                  <th className="text-right font-semibold py-2 pl-3">Won&nbsp;%<Info text="Deals won ÷ ANSWERED calls — of the conversations this caller actually had, how many ended as a paying customer. The one number that decides everything else." /></th>
                 </tr>
               </thead>
               <tbody>
                 {CALLERS.map(caller => {
-                  const em = aggregateEvents(periodEvents.filter(e => e.caller_name === caller))
+                  const evs = events.filter(e => e.caller_name === caller)
+                  const answered = evs.filter(isAnswered).length
+                  const won = callerWins.find(w => w.name === caller)?.wins ?? 0
                   return (
                     <tr key={caller} className="border-b border-gray-800/60">
                       <td className="py-2.5 pr-3">
@@ -608,20 +617,25 @@ export function DailyStats({ rows, events, demoOutcomes, industryWins = [] }: Pr
                           {caller}
                         </span>
                       </td>
-                      <td className="text-right tabular-nums text-white py-2.5 px-3">{em.dialsPerDemo != null ? em.dialsPerDemo.toFixed(0) : '—'}</td>
-                      <td className="text-right tabular-nums text-blue-400 py-2.5 px-3">{em.dmReachedRate != null ? pctFrac0(em.dmReachedRate, em.dmReached, em.answered) : '—'}</td>
-                      <td className="text-right tabular-nums text-green-400 py-2.5 pl-3">{em.dmToDemoRate != null ? pct(em.dmToDemoRate) : '—'}</td>
+                      <td className="text-right tabular-nums text-white py-2.5 px-3">{evs.length}</td>
+                      <td className="text-right tabular-nums text-white py-2.5 px-3">{won}</td>
+                      <td className="text-right tabular-nums text-green-400 py-2.5 pl-3">
+                        {answered ? pctFrac(won / answered, won, answered) : '—'}
+                      </td>
                     </tr>
                   )
                 })}
                 {(() => {
-                  const em = aggregateEvents(periodEvents)
+                  const answered = events.filter(isAnswered).length
+                  const won = callerWins.reduce((s, w) => s + w.wins, 0)
                   return (
                     <tr className="font-semibold">
                       <td className="py-2.5 pr-3 text-gray-300">Team total</td>
-                      <td className="text-right tabular-nums text-white py-2.5 px-3">{em.dialsPerDemo != null ? em.dialsPerDemo.toFixed(0) : '—'}</td>
-                      <td className="text-right tabular-nums text-blue-300 py-2.5 px-3">{em.dmReachedRate != null ? pctFrac0(em.dmReachedRate, em.dmReached, em.answered) : '—'}</td>
-                      <td className="text-right tabular-nums text-green-300 py-2.5 pl-3">{em.dmToDemoRate != null ? pct(em.dmToDemoRate) : '—'}</td>
+                      <td className="text-right tabular-nums text-white py-2.5 px-3">{events.length}</td>
+                      <td className="text-right tabular-nums text-white py-2.5 px-3">{won}</td>
+                      <td className="text-right tabular-nums text-green-300 py-2.5 pl-3">
+                        {answered ? pctFrac(won / answered, won, answered) : '—'}
+                      </td>
                     </tr>
                   )
                 })()}
@@ -629,9 +643,6 @@ export function DailyStats({ rows, events, demoOutcomes, industryWins = [] }: Pr
             </table>
           </div>
         )}
-        <p className="text-[10px] text-gray-600 mt-3">
-          &quot;Reached DM&quot; = you toggled &quot;Reached decision-maker&quot; on the call. Only calls logged since this feature shipped are counted.
-        </p>
       </div>
 
       {/* Demo performance + callback conversion */}
