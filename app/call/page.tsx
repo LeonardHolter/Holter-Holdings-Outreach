@@ -4,6 +4,7 @@ import { query, PRIORITY_ORDER_BY } from '@/lib/db'
 import { CallingSession } from '@/components/CallingSession'
 import { TelnyxDialPanel } from '@/components/TelnyxDialPanel'
 import { CallingHoursGate } from '@/components/CallingHoursGate'
+import { PaceBanner } from '@/components/PaceBanner'
 import { Nav } from '@/components/Nav'
 import type { Company } from '@/types'
 
@@ -88,6 +89,7 @@ export default async function CallPage({ searchParams }: { searchParams: Promise
     <div className="flex flex-col h-[100dvh] overflow-hidden bg-gray-950">
       <Nav />
       <CallingHoursGate>
+        <PaceBanner />
         <TelnyxDialPanel prefillNumber={params.dial} />
         <CallingSession initialQueue={finalQueue} dialNumber={params.dial} />
       </CallingHoursGate>
