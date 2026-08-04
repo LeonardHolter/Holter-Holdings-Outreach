@@ -31,13 +31,31 @@ describe('industryPerf', () => {
     ]
     const [ror, bil] = industryPerf(events)
     expect(ror).toEqual({
-      industry: 'Rørlegger', dials: 4, answered: 2, demos: 1,
-      pickupRate: 0.5, demoRate: 0.5,
+      industry: 'Rørlegger', dials: 4, answered: 2, demos: 1, won: 0,
+      pickupRate: 0.5, demoRate: 0.5, wonRate: 0,
     })
     expect(bil).toEqual({
-      industry: 'Bilverksted', dials: 2, answered: 1, demos: 0,
-      pickupRate: 0.5, demoRate: 0,
+      industry: 'Bilverksted', dials: 2, answered: 1, demos: 0, won: 0,
+      pickupRate: 0.5, demoRate: 0, wonRate: 0,
     })
+  })
+
+  it('ranks by won rate above everything — wins beat a prettier demo rate', () => {
+    const events = [
+      // A: 2 answered, 1 demo (50% demo rate), 0 won
+      ev({ industry: 'A', response: 'Demo booked' }),
+      ev({ industry: 'A', response: 'Not interested' }),
+      // B: 4 answered, 1 demo (25% demo rate), 1 won
+      ev({ industry: 'B', response: 'Demo booked' }),
+      ev({ industry: 'B', response: 'Not interested' }),
+      ev({ industry: 'B', response: 'Not interested' }),
+      ev({ industry: 'B', response: 'Not interested' }),
+    ]
+    const wins = [{ industry: 'B', n: 1 }]
+    const [first] = industryPerf(events, wins)
+    expect(first.industry).toBe('B')
+    expect(first.won).toBe(1)
+    expect(first.wonRate).toBe(0.25)
   })
 
   it('ranks the best demo rate first', () => {

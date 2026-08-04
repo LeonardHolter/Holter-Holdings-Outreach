@@ -34,6 +34,11 @@ export interface DemoOutcomeCount {
   n: number
 }
 
+export interface IndustryWinCount {
+  industry: string | null
+  n: number
+}
+
 async function fetchStatRows(): Promise<StatRow[]> {
   const rows = await query(`
     SELECT
@@ -88,6 +93,22 @@ async function fetchCallEvents(): Promise<CallEvent[]> {
   }))
 }
 
+async function fetchIndustryWins(): Promise<IndustryWinCount[]> {
+  // Wins live on companies (demo_outcome), not the event log. Tolerate the
+  // industry column not existing so /stats deploys ahead of the migration.
+  try {
+    const rows = await query(`
+      SELECT industry, COUNT(*)::int AS n
+      FROM companies
+      WHERE demo_outcome = 'Won'
+      GROUP BY industry
+    `)
+    return rows.map(r => ({ industry: r.industry as string | null, n: Number(r.n) }))
+  } catch {
+    return []
+  }
+}
+
 async function fetchDemoOutcomes(): Promise<DemoOutcomeCount[]> {
   const rows = await query(`
     SELECT demo_outcome, COUNT(*)::int AS n
@@ -99,17 +120,18 @@ async function fetchDemoOutcomes(): Promise<DemoOutcomeCount[]> {
 }
 
 export default async function StatsPage() {
-  const [rows, events, demoOutcomes] = await Promise.all([
+  const [rows, events, demoOutcomes, industryWins] = await Promise.all([
     fetchStatRows(),
     fetchCallEvents(),
     fetchDemoOutcomes(),
+    fetchIndustryWins(),
   ])
 
   return (
     <div className="flex flex-col h-[100dvh] overflow-hidden bg-gray-950">
       <Nav />
       <div className="flex-1 overflow-auto px-4 py-6">
-        <DailyStats rows={rows} events={events} demoOutcomes={demoOutcomes} />
+        <DailyStats rows={rows} events={events} demoOutcomes={demoOutcomes} industryWins={industryWins} />
       </div>
     </div>
   )

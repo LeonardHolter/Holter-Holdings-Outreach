@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Info } from './Info'
 import { format, parseISO } from 'date-fns'
-import type { StatRow, CallEvent, DemoOutcomeCount } from '@/app/stats/page'
+import type { StatRow, CallEvent, DemoOutcomeCount, IndustryWinCount } from '@/app/stats/page'
 import { UNDER_CONSIDERATION } from '@/types'
 
 interface DayNote {
@@ -196,10 +196,14 @@ export function revenueTierPerf(events: CallEvent[]) {
   }).filter(t => t.dials > 0)
 }
 
-// Which industry converts best. Same shape and same answered-based demo rate
-// as the revenue tiers, plus pickup — with a fresh vertical the first question
-// is "do they even answer", which the demo rate alone can't show.
-export function industryPerf(events: CallEvent[]) {
+// Which industry converts best — always all-time: industries accumulate too
+// slowly for day-slicing, and the number that decides where the dials go is
+// won ÷ answered. Wins come from companies.demo_outcome (the event log has
+// no outcomes), everything else from the events; the funnel rates keep the
+// same answered-based denominators as the rest of the page, plus pickup —
+// with a fresh vertical the first question is "do they even answer".
+export function industryPerf(events: CallEvent[], wins: IndustryWinCount[] = []) {
+  const winsBy = new Map(wins.map(w => [w.industry ?? 'Ukjent', w.n]))
   const byIndustry = new Map<string, CallEvent[]>()
   for (const e of events) {
     const key = e.industry ?? 'Ukjent'
@@ -212,18 +216,26 @@ export function industryPerf(events: CallEvent[]) {
       const dials = evs.length
       const answered = evs.filter(isAnswered).length
       const demos = evs.filter(e => e.response === 'Demo booked').length
+      const won = winsBy.get(industry) ?? 0
       return {
         industry,
         dials,
         answered,
         demos,
+        won,
         pickupRate: dials ? answered / dials : null,
         demoRate: answered ? demos / answered : null,
+        wonRate: answered ? won / answered : null,
       }
     })
-    // Best performer on top; rank by demo rate, break ties on pickup so two
-    // industries without demos yet still order meaningfully.
-    .sort((a, b) => (b.demoRate ?? 0) - (a.demoRate ?? 0) || (b.pickupRate ?? 0) - (a.pickupRate ?? 0))
+    // Won rate decides the ranking — that's the number that matters. Demo
+    // rate then pickup break ties so young industries still order sensibly.
+    .sort(
+      (a, b) =>
+        (b.wonRate ?? 0) - (a.wonRate ?? 0) ||
+        (b.demoRate ?? 0) - (a.demoRate ?? 0) ||
+        (b.pickupRate ?? 0) - (a.pickupRate ?? 0),
+    )
 }
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
@@ -244,9 +256,10 @@ interface Props {
   rows: StatRow[]
   events: CallEvent[]
   demoOutcomes: DemoOutcomeCount[]
+  industryWins?: IndustryWinCount[]
 }
 
-export function DailyStats({ rows, events, demoOutcomes }: Props) {
+export function DailyStats({ rows, events, demoOutcomes, industryWins = [] }: Props) {
   // Default to all-time: the Breakdown answers "how are we doing", and on a
   // quiet morning a 'today' default shows an empty table that reads like the
   // data is broken.
@@ -351,7 +364,8 @@ export function DailyStats({ rows, events, demoOutcomes }: Props) {
     [events, period, today, weekAgo]
   )
   const tierPerf = useMemo(() => revenueTierPerf(periodEvents), [periodEvents])
-  const industries = useMemo(() => industryPerf(periodEvents), [periodEvents])
+  // All events, not periodEvents — the industry table is deliberately all-time.
+  const industries = useMemo(() => industryPerf(events, industryWins), [events, industryWins])
 
   // Demo outcomes (all-time — demos are too sparse to slice by period).
   const demoStats = useMemo(() => {
@@ -659,28 +673,30 @@ export function DailyStats({ rows, events, demoOutcomes }: Props) {
       {/* Industry performance — which vertical is worth the dials */}
       <div className="bg-gray-900 rounded-xl p-5">
         <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">
-          Performance by Industry
-          <Info text="One row per industry (Bilverksted, Rørlegger, …), ranked best first by demo rate. Demo % is demos ÷ ANSWERED calls — same denominator as everywhere else — and pickup is answered ÷ dials, since with a new vertical the first question is whether anyone answers at all. 'Ukjent' collects calls to companies made before industries were tagged or since deleted. Follows the period tabs above." />
+          Performance by Industry (all time)
+          <Info text="One row per industry, ranked by WON rate — deals won ÷ ANSWERED calls, the number that decides where the dials go. Demo % and pickup use the same denominators as everywhere else on the page. Always all time (industries accumulate too slowly for day-slicing), so this table ignores the period tabs. 'Ukjent' collects calls to companies deleted since." />
         </h2>
         {industries.length === 0 ? (
           <p className="text-xs text-gray-600">Not enough data yet.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm min-w-[480px]">
+            <table className="w-full text-sm min-w-[560px]">
               <thead>
                 <tr className="text-xs text-gray-500 uppercase tracking-wider border-b border-gray-800">
                   <th className="text-left font-semibold py-2 pr-3">Industry</th>
                   <th className="text-right font-semibold py-2 px-3">Dials</th>
                   <th className="text-right font-semibold py-2 px-3">Pickup&nbsp;%</th>
                   <th className="text-right font-semibold py-2 px-3">Demos</th>
-                  <th className="text-right font-semibold py-2 pl-3">Demo&nbsp;%</th>
+                  <th className="text-right font-semibold py-2 px-3">Demo&nbsp;%</th>
+                  <th className="text-right font-semibold py-2 px-3">Won</th>
+                  <th className="text-right font-semibold py-2 pl-3">Won&nbsp;%</th>
                 </tr>
               </thead>
               <tbody>
                 {industries.map((ind, i) => (
                   <tr key={ind.industry} className="border-b border-gray-800/50">
                     <td className="py-2.5 pr-3 text-white">
-                      {i === 0 && industries.length > 1 && ind.demos > 0 && <span className="mr-1.5" aria-hidden>🏆</span>}
+                      {i === 0 && industries.length > 1 && ind.won > 0 && <span className="mr-1.5" aria-hidden>🏆</span>}
                       {ind.industry}
                     </td>
                     <td className="text-right tabular-nums text-gray-300 py-2.5 px-3">{ind.dials}</td>
@@ -689,8 +705,12 @@ export function DailyStats({ rows, events, demoOutcomes }: Props) {
                       <span className="text-gray-600"> ({ind.answered})</span>
                     </td>
                     <td className="text-right tabular-nums text-gray-300 py-2.5 px-3">{ind.demos}</td>
-                    <td className="text-right tabular-nums text-green-400 py-2.5 pl-3">
+                    <td className="text-right tabular-nums text-gray-300 py-2.5 px-3">
                       {ind.demoRate != null ? pctFrac(ind.demoRate, ind.demos, ind.answered) : '—'}
+                    </td>
+                    <td className="text-right tabular-nums text-gray-300 py-2.5 px-3">{ind.won}</td>
+                    <td className="text-right tabular-nums text-green-400 py-2.5 pl-3">
+                      {ind.wonRate != null ? pctFrac(ind.wonRate, ind.won, ind.answered) : '—'}
                     </td>
                   </tr>
                 ))}
