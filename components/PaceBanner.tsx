@@ -5,12 +5,18 @@ import { GOAL } from '@/components/DailyStats'
 import { avgSecondsPerCall, estimatedFinish, todaysTarget } from '@/lib/pace'
 import { CALL_CUTOFF_HOUR, osloHour } from '@/lib/callingHours'
 
-// Slim strip above the dialer: today's count against the real target (60, or
-// 120 when yesterday's miss is unrescued — the ±1 debt), the current pace,
-// and the projected finish time. Refreshes every 45s and after focus, so it
-// tracks a live session without anyone reloading.
+// Slim strip above the dialer: today's count against the caller's own target
+// (60, or 120 when THEIR yesterday fell short unrescued — the ±1 debt is
+// personal: William can owe 120 while Leonard only needs 60), the current
+// pace, and the projected finish time.
+//
+// The caller comes from the same localStorage key the dialer session uses.
+// Same-tab localStorage writes fire no event, so it's re-read on a short
+// tick; picking your name in the dialer flips the banner within seconds.
+// Until a name is picked the numbers are team-wide.
 
 interface PaceData {
+  caller: string | null
   callsToday: number
   yesterday: number
   dayBefore: number
@@ -18,13 +24,23 @@ interface PaceData {
 }
 
 export function PaceBanner() {
+  const [caller, setCaller] = useState<string | null>(null)
   const [data, setData] = useState<PaceData | null>(null)
+
+  // Track the dialer's caller selection.
+  useEffect(() => {
+    const read = () => setCaller(localStorage.getItem('sessionCaller') || null)
+    read()
+    const id = setInterval(read, 3_000)
+    return () => clearInterval(id)
+  }, [])
 
   useEffect(() => {
     let cancelled = false
     const load = async () => {
       try {
-        const res = await fetch('/api/pace', { cache: 'no-store' })
+        const url = caller ? `/api/pace?caller=${encodeURIComponent(caller)}` : '/api/pace'
+        const res = await fetch(url, { cache: 'no-store' })
         if (!res.ok) return
         const d = await res.json()
         if (!cancelled) setData(d)
@@ -41,9 +57,10 @@ export function PaceBanner() {
       clearInterval(id)
       window.removeEventListener('focus', onFocus)
     }
-  }, [])
+  }, [caller])
 
-  if (!data) return null
+  // Never show one caller's numbers under another caller's name mid-switch.
+  if (!data || data.caller !== caller) return null
 
   const target = todaysTarget(data.yesterday, data.dayBefore)
   const owes = target > GOAL
@@ -59,6 +76,7 @@ export function PaceBanner() {
     <div className="shrink-0 border-b border-gray-800 bg-gray-950/80">
       <div className="flex items-center gap-x-4 gap-y-1 flex-wrap px-3 sm:px-4 py-1.5 text-xs">
         <span className="flex items-center gap-2">
+          <span className="text-gray-500">{caller ?? 'Team'}</span>
           <span className={`tabular-nums font-semibold ${done ? 'text-green-400' : 'text-white'}`}>
             {data.callsToday}/{target}
           </span>
@@ -71,7 +89,7 @@ export function PaceBanner() {
         </span>
 
         {owes && !done && (
-          <span className="text-amber-300" title={`I går ble det ${data.yesterday} samtaler — under ${GOAL}, og dagen før nådde ikke ${GOAL * 2}. Etter ±1-regelen redder ${GOAL * 2} i dag streaken.`}>
+          <span className="text-amber-300" title={`${caller ?? 'Teamet'} tok ${data.yesterday} samtaler i går — under ${GOAL}, og dagen før nådde ikke ${GOAL * 2}. Etter ±1-regelen redder ${GOAL * 2} i dag streaken.`}>
             {GOAL * 2} i dag — skylder fra i går (±1)
           </span>
         )}
