@@ -64,6 +64,7 @@ export function PaceBanner() {
 
   const target = todaysTarget(data.yesterday, data.dayBefore)
   const owes = target > GOAL
+  const dayOff = target === 0
   const done = data.callsToday >= target
   const perCall = avgSecondsPerCall(data.timestamps)
   const eta = estimatedFinish(new Date(), data.callsToday, target, perCall)
@@ -83,18 +84,28 @@ export function PaceBanner() {
           <span className="w-20 h-1.5 bg-gray-800 rounded-full overflow-hidden">
             <span
               className={`block h-full rounded-full ${done ? 'bg-green-400' : 'bg-white'}`}
-              style={{ width: `${Math.min(100, (data.callsToday / target) * 100)}%` }}
+              style={{ width: `${target > 0 ? Math.min(100, (data.callsToday / target) * 100) : 100}%` }}
             />
           </span>
         </span>
 
         {owes && !done && (
-          <span className="text-amber-300" title={`${caller ?? 'Teamet'} tok ${data.yesterday} samtaler i går — under ${GOAL}, og dagen før nådde ikke ${GOAL * 2}. Etter ±1-regelen redder ${GOAL * 2} i dag streaken.`}>
-            {GOAL * 2} i dag — skylder fra i går (±1)
+          <span className="text-amber-300" title={`${caller ?? 'Teamet'} tok ${data.yesterday} samtaler i går. ±1-regelen: to påfølgende dager må summere til ${GOAL * 2}, så i dag trengs ${target} (${data.yesterday} + ${target} = ${GOAL * 2}).`}>
+            {target} i dag — skylder fra i går (±1)
           </span>
         )}
 
-        {done && <span className="text-green-400">✓ mål nådd</span>}
+        {!owes && !dayOff && target < GOAL && !done && (
+          <span className="text-gray-500" title={`${data.yesterday} i går + ${target} i dag = ${GOAL * 2} over to dager.`}>
+            bare {target} i dag ({data.yesterday} i går)
+          </span>
+        )}
+
+        {done && (
+          <span className="text-green-400">
+            {dayOff ? `✓ fridag opptjent (${data.yesterday} i går)` : '✓ mål nådd'}
+          </span>
+        )}
 
         {!done && perCall != null && (
           <span className="text-gray-500 tabular-nums">~{(perCall / 60).toFixed(1)} min/samtale</span>

@@ -11,14 +11,24 @@ import { GOAL } from '@/components/DailyStats'
 const BREAK_GAP_SECONDS = 15 * 60
 
 /**
- * Today's target under the ±1 rule: 60, or double if yesterday fell short
- * AND wasn't already rescued by a double the day before it. (If yesterday
- * missed and the day before didn't double, only a 120 today saves the
- * streak — that's the debt this banner surfaces.)
+ * Today's target under the ±1 rule: 120 over two consecutive days,
+ * distributed however you like. Two obligations decide the number:
+ *
+ *  - If yesterday fell short of 60 and yesterday + the day before didn't
+ *    reach 120, yesterday is still uncovered and only today can save it:
+ *    today must bring the two-day sum to 120 (8 yesterday → 112 today).
+ *  - Today itself needs covering too: 60 on its own, or enough that
+ *    yesterday + today reaches 120 — whichever is less. After a 120-day,
+ *    that's 0: the day off is earned.
+ *
+ * The target is whichever obligation is larger. Steady state is 60.
  */
 export function todaysTarget(yesterdayCalls: number, dayBeforeCalls: number, goal = GOAL): number {
-  const yesterdayFine = yesterdayCalls >= goal || dayBeforeCalls >= goal * 2
-  return yesterdayFine ? goal : goal * 2
+  const double = goal * 2
+  const yesterdayCovered = yesterdayCalls >= goal || yesterdayCalls + dayBeforeCalls >= double
+  const oweForYesterday = yesterdayCovered ? 0 : double - yesterdayCalls
+  const oweForToday = Math.min(goal, Math.max(0, double - yesterdayCalls))
+  return Math.max(oweForYesterday, oweForToday)
 }
 
 /**

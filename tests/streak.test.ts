@@ -43,7 +43,7 @@ describe('goal streak', () => {
   })
 })
 
-describe('the ±1 rule', () => {
+describe('the ±1 rule (120 over two consecutive days)', () => {
   it('rescues a missed day when the day BEFORE doubled', () => {
     expect(streak({ 0: 10, [-1]: DOUBLE, [-2]: GOAL })).toBe(3)
   })
@@ -52,12 +52,26 @@ describe('the ±1 rule', () => {
     expect(streak({ 0: GOAL, [-1]: DOUBLE, [-2]: 0 })).toBe(3)
   })
 
+  it('splits the 120 freely across the pair — 8 then 112 works', () => {
+    expect(streak({ 0: DOUBLE - 8, [-1]: 8, [-2]: GOAL })).toBe(3)
+  })
+
   it('rescues a day with zero calls on it — that is the point of the rule', () => {
     expect(streak({ 0: DOUBLE, [-1]: 0, [-2]: DOUBLE })).toBe(3)
   })
 
-  it('needs the full double: one call short rescues nothing', () => {
-    expect(streak({ 0: GOAL, [-1]: 0, [-2]: DOUBLE - 1 })).toBe(1)
+  it('needs the full pair sum: 119 across two days rescues nothing', () => {
+    expect(streak({ 0: GOAL, [-1]: 10, [-2]: DOUBLE - 11 })).toBe(1)
+  })
+
+  it('a surplus cannot be spent twice on the same side pair', () => {
+    // 8 / 112 / 8: the 112 covers BOTH neighbours (8+112 ≥ 120 each way) —
+    // that is what "max one day buffer" allows, and no more: the outer 8s
+    // would each need their other neighbour to chip in.
+    expect(streak({ 0: 8, [-1]: DOUBLE - 8, [-2]: 8, [-3]: GOAL })).toBe(4)
+    // …but with 8 / 104 / 8 the pairs only reach 112: the 104-day stands on
+    // its own (≥ 60), while both 8-days fall — streak is that one day.
+    expect(streak({ 0: 8, [-1]: DOUBLE - 16, [-2]: 8, [-3]: GOAL })).toBe(1)
   })
 
   it('reaches exactly one day — a double two days away does not carry', () => {
