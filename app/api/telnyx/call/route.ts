@@ -8,6 +8,7 @@ import {
   telnyxDialerConfigured,
 } from '@/lib/telnyxDial'
 import { query } from '@/lib/db'
+import { CALL_CUTOFF_HOUR, isCallingClosed } from '@/lib/callingHours'
 
 /** Callers with a fresh heartbeat (same 90s staleness the claim system
  *  uses) — decides whether the caller is alone and gets the whole pool. */
@@ -29,6 +30,15 @@ export const dynamic = 'force-dynamic'
 export async function POST(request: NextRequest) {
   const missing = telnyxDialerConfigured()
   if (missing) return NextResponse.json({ error: missing }, { status: 503 })
+
+  // The UI gate on /call hides the dialer after hours; this is the backstop
+  // for stale tabs and direct API calls.
+  if (isCallingClosed()) {
+    return NextResponse.json(
+      { error: `Ringetiden er over — ingen samtaler etter kl. ${CALL_CUTOFF_HOUR}:00 (Oslo-tid).` },
+      { status: 403 },
+    )
+  }
 
   const body = await request.json().catch(() => null)
   const from = typeof body?.from === 'string' ? body.from.trim() : ''
