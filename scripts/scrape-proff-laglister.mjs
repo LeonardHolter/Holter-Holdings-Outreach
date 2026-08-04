@@ -50,7 +50,7 @@ const args = Object.fromEntries(
 const DEFAULT_URL =
   'https://www.proff.no/laglister?profitFrom=-8556257&profitTo=47479000&revenueFrom=5000&revenueTo=127927000&phone=true&proffIndustryCode=10060&sort=revenueDesc'
 const BASE_URL = args.url || DEFAULT_URL
-const INDUSTRY = typeof args.industry === 'string' && args.industry ? args.industry : 'Rørlegger'
+const INDUSTRY = typeof args.industry === 'string' && args.industry ? args.industry : 'Rørleggere'
 const START = args.start ? parseInt(args.start, 10) : 1
 const END = args.end ? parseInt(args.end, 10) : null
 const DRY = !!args.dry
