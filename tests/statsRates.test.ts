@@ -72,6 +72,7 @@ const ev = (response: string, extra: Partial<CallEvent> = {}): CallEvent => ({
   response,
   reached_decision_maker: false,
   revenue_at_call: null,
+  industry: null,
   created_at: '2026-07-30T10:00:00Z',
   ...extra,
 })

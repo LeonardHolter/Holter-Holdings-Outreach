@@ -22,6 +22,7 @@ export interface Company {
   employees: string | null
   reached_decision_maker: boolean | null
   demo_outcome: string | null
+  industry: string | null // 'Bilverksted' | 'Rørlegger' | … (set by importers)
   calls_leonard: number
   calls_william: number
   total_dialed: number

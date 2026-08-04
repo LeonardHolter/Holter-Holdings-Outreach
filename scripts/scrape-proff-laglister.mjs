@@ -18,6 +18,11 @@
  *   node scripts/scrape-proff-laglister.mjs                  # import all pages
  *   node scripts/scrape-proff-laglister.mjs --start=1 --end=2
  *   node scripts/scrape-proff-laglister.mjs --url='https://www.proff.no/laglister?...'
+ *   node scripts/scrape-proff-laglister.mjs --industry=Elektriker
+ *
+ * --industry tags every imported row (default Rørlegger, matching the
+ * default URL) and feeds the Performance by Industry table on /stats.
+ * Requires the industry column (scripts/migrate-add-industry.mjs).
  *
  * DATABASE_URL comes from .env.local or an ENV_FILE=/path env file.
  */
@@ -45,6 +50,7 @@ const args = Object.fromEntries(
 const DEFAULT_URL =
   'https://www.proff.no/laglister?profitFrom=-8556257&profitTo=47479000&revenueFrom=5000&revenueTo=127927000&phone=true&proffIndustryCode=10060&sort=revenueDesc'
 const BASE_URL = args.url || DEFAULT_URL
+const INDUSTRY = typeof args.industry === 'string' && args.industry ? args.industry : 'Rørlegger'
 const START = args.start ? parseInt(args.start, 10) : 1
 const END = args.end ? parseInt(args.end, 10) : null
 const DRY = !!args.dry
@@ -121,11 +127,11 @@ async function upsert(pool, companies) {
   for (const c of companies) {
     if (!c.org_nr || !c.company_name) continue
     const res = await pool.query(
-      `INSERT INTO companies (company_name, org_nr, phone_number, owners_name, revenue, employees, email, website, state, reach_out_response)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'Not called')
+      `INSERT INTO companies (company_name, org_nr, phone_number, owners_name, revenue, employees, email, website, state, industry, reach_out_response)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'Not called')
        ON CONFLICT (org_nr) WHERE org_nr IS NOT NULL DO NOTHING
        RETURNING id`,
-      [c.company_name, c.org_nr, c.phone_number, c.owners_name, c.revenue, c.employees, c.email, c.website, c.state]
+      [c.company_name, c.org_nr, c.phone_number, c.owners_name, c.revenue, c.employees, c.email, c.website, c.state, INDUSTRY]
     )
     if (res.rowCount > 0) inserted++
   }

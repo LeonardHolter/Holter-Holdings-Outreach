@@ -30,6 +30,7 @@ CREATE TABLE companies (
   employees TEXT,         -- employee count / range (from proff.no)
   reached_decision_maker BOOLEAN, -- did the last call reach the owner/daglig leder?
   demo_outcome TEXT,      -- 'Held' | 'No-show' | 'Won' | 'Lost' (set after the demo happens)
+  industry TEXT,          -- 'Bilverksted' | 'Rørlegger' | … (set by importers; backfill: scripts/migrate-add-industry.mjs)
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );

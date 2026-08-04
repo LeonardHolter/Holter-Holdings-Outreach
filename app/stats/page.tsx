@@ -23,6 +23,9 @@ export interface CallEvent {
   response: string
   reached_decision_maker: boolean | null
   revenue_at_call: number | null
+  /** Company's industry (from the companies join); null for deleted
+   *  companies or before the industry migration has run. */
+  industry: string | null
   created_at: string // ISO timestamp
 }
 
@@ -54,17 +57,33 @@ async function fetchStatRows(): Promise<StatRow[]> {
 }
 
 async function fetchCallEvents(): Promise<CallEvent[]> {
-  const rows = await query(`
-    SELECT company_id, caller_name, response, reached_decision_maker, revenue_at_call, created_at
-    FROM call_events
-    ORDER BY created_at ASC
-  `)
+  // Industry lives on companies, not the event log — events made before the
+  // industry migration (or on since-deleted companies) resolve to NULL. The
+  // fallback query keeps /stats alive if the industry column doesn't exist
+  // yet, so the code can deploy ahead of the migration.
+  let rows
+  try {
+    rows = await query(`
+      SELECT e.company_id, e.caller_name, e.response, e.reached_decision_maker,
+             e.revenue_at_call, e.created_at, c.industry
+      FROM call_events e
+      LEFT JOIN companies c ON c.id = e.company_id
+      ORDER BY e.created_at ASC
+    `)
+  } catch {
+    rows = await query(`
+      SELECT company_id, caller_name, response, reached_decision_maker, revenue_at_call, created_at
+      FROM call_events
+      ORDER BY created_at ASC
+    `)
+  }
   return rows.map(r => ({
     company_id: r.company_id,
     caller_name: r.caller_name,
     response: r.response,
     reached_decision_maker: r.reached_decision_maker,
     revenue_at_call: r.revenue_at_call != null ? Number(r.revenue_at_call) : null,
+    industry: (r.industry as string | null) ?? null,
     created_at: new Date(r.created_at).toISOString(),
   }))
 }
