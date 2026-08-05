@@ -1,4 +1,4 @@
-import { GOAL } from '@/components/DailyStats'
+import { GOAL } from '@/lib/goals'
 
 // Pace math for the banner above the dialer: how many calls today's goal
 // actually requires, how fast the team is dialling, and when they'll be done.
@@ -11,24 +11,42 @@ import { GOAL } from '@/components/DailyStats'
 const BREAK_GAP_SECONDS = 15 * 60
 
 /**
- * Today's target under the ±1 rule: 120 over two consecutive days,
- * distributed however you like. Two obligations decide the number:
+ * Today's target under the ±1 rule, carry model: every day owes 60, and
+ * surplus or debt carries exactly ONE day — and is SPENT when used, never
+ * counted twice.
  *
- *  - If yesterday fell short of 60 and yesterday + the day before didn't
- *    reach 120, yesterday is still uncovered and only today can save it:
- *    today must bring the two-day sum to 120 (8 yesterday → 112 today).
- *  - Today itself needs covering too: 60 on its own, or enough that
- *    yesterday + today reaches 120 — whichever is less. After a 120-day,
- *    that's 0: the day off is earned.
+ *  - 8 yesterday → 112 today (own 60 + yesterday's missing 52).
+ *  - 8 two days ago, 113 yesterday → 59 today: 112 of the 113 were consumed
+ *    covering the 8-day, so today starts fresh at 60 minus the 1 left over.
+ *    (The old mistake: letting the same 113 also subsidise today.)
+ *  - 120 yesterday with no debt to pay → 0 today, the day off is earned;
+ *    the day after a day off is a plain 60.
  *
- * The target is whichever obligation is larger. Steady state is 60.
+ * A day that made its own 60 but couldn't also cover yesterday's debt lets
+ * yesterday die without owing today anything extra — debt only carries one
+ * day, so it expires unpaid rather than compounding.
+ *
+ * Implemented as a two-day walk of the same simulation callStreak runs, so
+ * the banner and the streak can never disagree about what today requires.
  */
 export function todaysTarget(yesterdayCalls: number, dayBeforeCalls: number, goal = GOAL): number {
-  const double = goal * 2
-  const yesterdayCovered = yesterdayCalls >= goal || yesterdayCalls + dayBeforeCalls >= double
-  const oweForYesterday = yesterdayCovered ? 0 : double - yesterdayCalls
-  const oweForToday = Math.min(goal, Math.max(0, double - yesterdayCalls))
-  return Math.max(oweForYesterday, oweForToday)
+  let carry = 0
+  let debt = 0
+  for (const calls of [dayBeforeCalls, yesterdayCalls]) {
+    const need = Math.max(0, goal + debt - carry)
+    if (calls >= need) {
+      carry = calls - need
+      debt = 0
+    } else if (calls >= goal) {
+      // Own day fine, inherited debt unpayable — it expires, chain resets.
+      carry = calls - goal
+      debt = 0
+    } else {
+      debt = Math.max(0, goal - calls - carry)
+      carry = 0
+    }
+  }
+  return Math.max(0, goal + debt - carry)
 }
 
 /**

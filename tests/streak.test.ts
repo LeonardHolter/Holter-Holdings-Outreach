@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { callStreak, GOAL } from '@/components/DailyStats'
 
-// The ±1 rule, pinned down. A streak is the one number on this page that
-// punishes you, so the edges matter: what exactly rescues a missed day, what
-// doesn't, and the fact that an unfinished today must never look like a break.
+// The ±1 rule, carry model: every day owes 60; surplus and debt carry
+// exactly one day and are SPENT when used — nothing counts twice. A streak
+// is the one number on this page that punishes you, so the edges matter.
 
 const TODAY = '2026-08-03'
 const DOUBLE = GOAL * 2
@@ -34,21 +34,24 @@ describe('goal streak', () => {
     expect(streak({ 0: GOAL })).toBe(1)
   })
 
-  it('breaks on a short day with no double beside it', () => {
-    expect(streak({ 0: GOAL, [-1]: GOAL - 1, [-2]: GOAL })).toBe(1)
-  })
-
   it('has no streak at all when nothing was logged', () => {
     expect(streak({})).toBe(0)
   })
+
+  it('a short day whose rescue window closed breaks the chain behind it', () => {
+    // Two days ago: 59, one short. Yesterday made its own 60 but not the
+    // extra 1, and yesterday is finished — so the 59-day is dead and the
+    // chain restarts at yesterday. (Today, unfinished at 60, also counts.)
+    expect(streak({ 0: GOAL, [-1]: GOAL, [-2]: GOAL - 1, [-3]: GOAL })).toBe(2)
+  })
 })
 
-describe('the ±1 rule (120 over two consecutive days)', () => {
-  it('rescues a missed day when the day BEFORE doubled', () => {
+describe('the ±1 rule (surplus and debt carry one day, spent when used)', () => {
+  it('a 120-day earns the NEXT day off', () => {
     expect(streak({ 0: 10, [-1]: DOUBLE, [-2]: GOAL })).toBe(3)
   })
 
-  it('rescues a missed day when the day AFTER doubled', () => {
+  it('a make-up day pays the day BEFORE it', () => {
     expect(streak({ 0: GOAL, [-1]: DOUBLE, [-2]: 0 })).toBe(3)
   })
 
@@ -56,47 +59,51 @@ describe('the ±1 rule (120 over two consecutive days)', () => {
     expect(streak({ 0: DOUBLE - 8, [-1]: 8, [-2]: GOAL })).toBe(3)
   })
 
-  it('rescues a day with zero calls on it — that is the point of the rule', () => {
+  it('alternating 120 / 0 / 120 holds', () => {
     expect(streak({ 0: DOUBLE, [-1]: 0, [-2]: DOUBLE })).toBe(3)
   })
 
-  it('needs the full pair sum: 119 across two days rescues nothing', () => {
-    expect(streak({ 0: GOAL, [-1]: 10, [-2]: DOUBLE - 11 })).toBe(1)
+  it('the same surplus never counts twice', () => {
+    // 8 / 112 / today: the 112 was consumed covering the 8-day, so it
+    // cannot also cover today — today (unfinished, 8 calls in) is simply
+    // not in the streak yet, and the two paid days count.
+    expect(streak({ 0: 8, [-1]: DOUBLE - 8, [-2]: 8, [-3]: GOAL })).toBe(3)
   })
 
-  it('a surplus cannot be spent twice on the same side pair', () => {
-    // 8 / 112 / 8: the 112 covers BOTH neighbours (8+112 ≥ 120 each way) —
-    // that is what "max one day buffer" allows, and no more: the outer 8s
-    // would each need their other neighbour to chip in.
-    expect(streak({ 0: 8, [-1]: DOUBLE - 8, [-2]: 8, [-3]: GOAL })).toBe(4)
-    // …but with 8 / 104 / 8 the pairs only reach 112: the 104-day stands on
-    // its own (≥ 60), while both 8-days fall — streak is that one day.
+  it('a partial payment saves nobody', () => {
+    // 8 / 104: the 104 covers its own 60 but only 44 of the 52 owed — the
+    // 8-day dies, the 104-day starts a fresh chain of 1 (today, at 8 calls
+    // so far, is pending on its 16 remaining).
     expect(streak({ 0: 8, [-1]: DOUBLE - 16, [-2]: 8, [-3]: GOAL })).toBe(1)
   })
 
-  it('reaches exactly one day — a double two days away does not carry', () => {
-    // -3 doubled, but the day that fell short is -1, two days off. It would
-    // have rescued -2; the streak never gets that far.
-    expect(streak({ 0: GOAL, [-1]: 0, [-2]: 0, [-3]: DOUBLE })).toBe(1)
+  it('debt expires after one day — it never compounds', () => {
+    // The 0-day is beyond rescue by the time today starts; yesterday paid
+    // its own 60 and the chain restarted there.
+    expect(streak({ 0: GOAL, [-1]: GOAL, [-2]: 0, [-3]: GOAL })).toBe(2)
   })
 
   it('does not invent streak days from before the first logged call', () => {
-    // A first-ever day of 120 must not rescue the empty day before it.
     expect(streak({ 0: DOUBLE })).toBe(1)
   })
 })
 
 describe('today is never counted against you', () => {
   it('keeps the streak alive while today is still unfinished', () => {
-    // 12 calls in so far — the day is not over, so it must not read as a break.
     expect(streak({ 0: 12, [-1]: GOAL, [-2]: GOAL })).toBe(2)
   })
 
-  it('adds today to the streak as soon as it makes the goal', () => {
+  it('adds today to the streak as soon as it meets its requirement', () => {
     expect(streak({ 0: GOAL, [-1]: GOAL, [-2]: GOAL })).toBe(3)
   })
 
   it('still counts yesterday when nothing at all is logged today', () => {
     expect(streak({ [-1]: GOAL, [-2]: GOAL })).toBe(2)
+  })
+
+  it('counts a pending yesterday optimistically — today can still pay it', () => {
+    // Yesterday 8: dead only if today ends below 112. At breakfast the
+    // streak must not already read as broken.
+    expect(streak({ [-1]: 8, [-2]: GOAL, [-3]: GOAL })).toBe(3)
   })
 })

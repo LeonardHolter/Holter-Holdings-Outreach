@@ -5,6 +5,8 @@ import { Info } from './Info'
 import { format, parseISO } from 'date-fns'
 import type { StatRow, CallEvent, DemoOutcomeCount, IndustryWinCount } from '@/app/stats/page'
 import { UNDER_CONSIDERATION } from '@/types'
+import { GOAL, TEAM_GOAL } from '@/lib/goals'
+import { todaysTarget } from '@/lib/pace'
 
 interface DayNote {
   id?: string
@@ -15,12 +17,11 @@ interface DayNote {
   company_id?: string | null
 }
 
-// Per-person daily goal, and the team's: two callers × 60. The stats page
-// (Today KPI, streak, header) judges the TEAM; the pace banner on /call
-// judges each caller against their own 60. The ±1 rule scales with whichever
-// goal applies: 2× the goal over two consecutive days.
-export const GOAL = 60
-export const TEAM_GOAL = 120
+// The stats page (Today KPI, streak, header) judges the TEAM; the pace
+// banner on /call judges each caller against their own 60. Values live in
+// lib/goals (re-exported here for existing importers); the ±1 rule scales
+// with whichever goal applies.
+export { GOAL, TEAM_GOAL } from '@/lib/goals'
 const LEONARD_COLOR = '#ffffff' // white — monochrome theme
 const WILLIAM_COLOR = '#7a7a7a' // mid gray — monochrome theme
 const CALLERS = ['Leonard', 'William'] as const
@@ -44,39 +45,74 @@ function shiftDay(day: string, by: number): string {
 
 /**
  * Streak of consecutive days that made the daily goal, counting back from
- * today — under the ±1 rule.
+ * today — under the ±1 rule, carry model (the same one lib/pace todaysTarget
+ * walks, so the streak and the banner can never disagree).
  *
- * The ±1 rule: 120 calls over two consecutive days, distributed however you
- * like. A day counts if it hit 60 on its own, or if it and an adjacent day
- * sum to 120 — so 8 yesterday + 112 today works, and 120 one day buys the
- * next (or previous) day off. The buffer is exactly one day: a shortfall
- * can only borrow from its immediate neighbours.
+ * Every day owes the goal. Surplus and debt carry exactly ONE day, and are
+ * SPENT when used: 8 then 112 keeps both days (112 = own 60 + the missing
+ * 52), a 120-day earns the next day off, but that same 120 can't also cover
+ * the day after — nothing is counted twice. A short day is provisionally
+ * alive until its next day fails to pay; a day that made its own goal but
+ * couldn't also clear inherited debt lets the earlier day die and starts
+ * the chain fresh.
  *
- * Today never counts against you: an unfinished day that hasn't reached the
- * goal yet just isn't part of the streak, so counting starts at yesterday
- * instead of resetting to zero. (Tomorrow can still rescue today later — the
- * streak is recomputed from the data every time, so it repairs itself.)
+ * Today never counts against you: an unfinished day that hasn't met its
+ * requirement yet just isn't in the streak, so counting starts at yesterday
+ * — and a yesterday still waiting on today's remaining calls counts
+ * optimistically rather than reading as broken at breakfast.
  *
- * The walk stops at the first day anyone ever logged a call. Without that
- * floor a 120-day would rescue the empty day before it, and a first day of
- * 120 would hand you a streak day from before the team existed.
+ * The simulation starts at the first day anyone ever logged a call, so no
+ * phantom pre-history day can be "rescued" into the streak.
  */
 export function callStreak(totals: Map<string, number>, today: string, goal = GOAL): number {
   const at = (d: string) => totals.get(d) ?? 0
-  const qualifies = (d: string) =>
-    at(d) >= goal ||
-    at(d) + at(shiftDay(d, -1)) >= goal * 2 ||
-    at(d) + at(shiftDay(d, 1)) >= goal * 2
-
   // YYYY-MM-DD sorts lexicographically, so this is the earliest logged day.
   const firstLogged = [...totals.keys()].sort()[0]
   if (!firstLogged) return 0
 
-  let cur = qualifies(today) ? today : shiftDay(today, -1)
+  type Status = 'ok' | 'pending' | 'fail'
+  const status = new Map<string, Status>()
+  let carry = 0
+  let debt = 0
+  let pendingDay: string | null = null
+
+  for (let d = firstLogged; d <= today; d = shiftDay(d, 1)) {
+    const calls = at(d)
+    const need = Math.max(0, goal + debt - carry)
+    if (calls >= need) {
+      status.set(d, 'ok')
+      if (pendingDay) status.set(pendingDay, 'ok')
+      pendingDay = null
+      carry = calls - need
+      debt = 0
+    } else if (calls >= goal) {
+      // Own day fine, inherited debt unpaid — the pending day dies and the
+      // chain restarts here. Unless the payer is TODAY: an unfinished day
+      // can still pay before midnight, so it never condemns yesterday.
+      if (pendingDay && d !== today) status.set(pendingDay, 'fail')
+      status.set(d, 'ok')
+      pendingDay = null
+      carry = calls - goal
+      debt = 0
+    } else {
+      if (pendingDay && d !== today) status.set(pendingDay, 'fail')
+      status.set(d, 'pending')
+      pendingDay = d
+      debt = Math.max(0, goal - calls - carry)
+      carry = 0
+    }
+  }
+
+  const yesterday = shiftDay(today, -1)
+  let cur = status.get(today) === 'ok' ? today : yesterday
   let streak = 0
-  while (cur >= firstLogged && qualifies(cur)) {
-    streak++
-    cur = shiftDay(cur, -1)
+  while (cur >= firstLogged) {
+    const s = status.get(cur)
+    // A pending yesterday is still rescuable by today's remaining calls.
+    if (s === 'ok' || (s === 'pending' && cur === yesterday)) {
+      streak++
+      cur = shiftDay(cur, -1)
+    } else break
   }
   return streak
 }
@@ -342,13 +378,18 @@ export function DailyStats({ rows, events, demoOutcomes, industryWins = [], call
   )
   const streak = useMemo(() => callStreak(dailyTotals, today, TEAM_GOAL), [dailyTotals, today])
 
-  // Was today's shortfall covered by yesterday's surplus (the two-day 120),
-  // rather than by hitting the goal outright? Worth saying out loud — it's
-  // the difference between a streak you earned today and one yesterday is
-  // holding up.
+  // Did today meet a reduced requirement thanks to yesterday's unspent
+  // surplus, rather than hitting the goal outright? Worth saying out loud —
+  // it's the difference between a streak earned today and one yesterday is
+  // holding up. Uses the same carry model as the streak and the banner.
   const todayRescued = useMemo(() => {
     const t = dailyTotals.get(today) ?? 0
-    return t < TEAM_GOAL && t + (dailyTotals.get(shiftDay(today, -1)) ?? 0) >= TEAM_GOAL * 2
+    const target = todaysTarget(
+      dailyTotals.get(shiftDay(today, -1)) ?? 0,
+      dailyTotals.get(shiftDay(today, -2)) ?? 0,
+      TEAM_GOAL,
+    )
+    return t < TEAM_GOAL && t >= target
   }, [dailyTotals, today])
 
   const inPeriod = (date: string) =>
@@ -485,7 +526,7 @@ export function DailyStats({ rows, events, demoOutcomes, industryWins = [], call
             </div>
           )}
         </Kpi>
-        <Kpi label="Streak" info={`Consecutive days the TEAM made its ${TEAM_GOAL}-call goal, counting back from today. The ±1 rule: ${TEAM_GOAL * 2} over two consecutive days, distributed however you like — a slow day and a monster day next to it work, and ${TEAM_GOAL * 2} in one day buys the day before or after off. The buffer is exactly one day: a shortfall can only borrow from its immediate neighbours. Today never counts against you: an unfinished day just isn't in the streak yet.`}>
+        <Kpi label="Streak" info={`Consecutive days the TEAM made its ${TEAM_GOAL}-call goal, counting back from today. The ±1 rule: surplus and debt carry exactly one day, and are spent when used. Miss a day and the next day owes the difference on top of its own ${TEAM_GOAL}; ring ${TEAM_GOAL * 2} and the day off is earned — but the same surplus never counts twice. Today never counts against you: an unfinished day just isn't in the streak yet.`}>
           <div className="flex items-end gap-2">
             <span className={`text-3xl font-bold tabular-nums ${streak > 0 ? 'text-orange-400' : 'text-white'}`}>{streak}</span>
             <span className="mb-1 text-gray-500 text-sm">{streak === 1 ? 'day' : 'days'}</span>
