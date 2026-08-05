@@ -793,8 +793,14 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
               className="w-full bg-transparent text-2xl sm:text-3xl font-bold tracking-tight text-white focus:outline-none border-b border-transparent focus:border-gray-600 pb-1 transition-colors"
               placeholder="Company name" />
 
-            {/* Why this lead: revenue fit, region, call history — at a glance */}
+            {/* Why this lead: industry, revenue fit, region, call history — at
+                a glance. Industry first: it decides which pitch you run. */}
             <div className="mt-3 flex items-center gap-2 flex-wrap font-mono text-[11px] uppercase tracking-wider">
+              {company?.industry && (
+                <span className="inline-flex items-center px-2 py-1 rounded border border-gray-500 text-gray-200 font-bold">
+                  {company.industry}
+                </span>
+              )}
               {(() => {
                 const fit = fitBadge(company?.revenue ?? null)
                 const rev = fmtRevenue(company?.revenue ?? null)
