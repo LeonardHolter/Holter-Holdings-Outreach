@@ -68,11 +68,11 @@ function callbackMatchesNow(c: Company): boolean {
 // priority. Mirrors PRIORITY_ORDER_BY in lib/db.ts.
 function revenuePriority(c: Company): number {
   const r = c.revenue
-  if (r != null && r >= 10000 && r <= 20000) return 1  // 10–20 MNOK — sweet spot, call first
-  if (r != null && r < 10000) return 2                 // under 10 MNOK — real shop, real pain
-  if (r != null && r <= 25000) return 3                // 20–25 MNOK — lower priority
+  if (r != null && r > 20000 && r <= 50000) return 1   // 20–50 MNOK — sweet spot, call first
+  if (r != null && r >= 10000) return 2                // 10–20 MNOK — previous sweet spot
+  if (r != null && r < 10000) return 3                 // under 10 MNOK — real shop, real pain
   if (r == null) return 4                              // unknown revenue
-  return 5                                             // over 25 MNOK — too big, skip
+  return 5                                             // over 50 MNOK — too big, skip
 }
 
 function sortQueueByCallback(q: Company[]): Company[] {
@@ -107,8 +107,9 @@ function nextRescheduleDate(googleReviews: number | null, callCount: number): st
   return format(d, 'yyyy-MM-dd')
 }
 
-// Revenue is stored in thousands NOK (driftsinntekter). Under 15 MNOK is the
-// ideal customer profile this tool exists to find — surface that while dialing.
+// Revenue is stored in thousands NOK (driftsinntekter). 20–50 MNOK is the
+// ideal customer profile — surface that while dialing. Matches
+// revenuePriority below and PRIORITY_ORDER_BY in lib/db.ts.
 function fmtRevenue(revenue: number | null): string | null {
   if (revenue == null) return null
   return `${(revenue / 1000).toFixed(1).replace('.', ',')} MNOK`
@@ -116,9 +117,10 @@ function fmtRevenue(revenue: number | null): string | null {
 
 function fitBadge(revenue: number | null): { label: string; hot: boolean } {
   if (revenue == null) return { label: 'Revenue unknown', hot: false }
-  if (revenue < 15000) return { label: 'ICP fit', hot: true }
-  if (revenue <= 25000) return { label: 'Large', hot: false }
-  return { label: 'Too big', hot: false }
+  if (revenue > 50000) return { label: 'Too big', hot: false }
+  if (revenue > 20000) return { label: 'ICP fit', hot: true }
+  if (revenue >= 10000) return { label: 'Good fit', hot: false }
+  return { label: 'Small', hot: false }
 }
 
 export function CallingSession({ initialQueue, dialNumber }: Props) {

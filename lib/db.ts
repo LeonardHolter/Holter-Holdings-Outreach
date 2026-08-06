@@ -23,18 +23,19 @@ export async function query(text: string, params?: unknown[]): Promise<any[]> {
 /**
  * Lead-priority ordering based on driftsinntekter (revenue, stored in
  * thousands NOK). Highest priority first:
- *   1. 10–20 MNOK     — the sweet spot, called first
- *   2. Under 10 MNOK  — real shop, real revenue, real pain
- *   3. 20–25 MNOK     — getting large, lower priority
+ *   1. 20–50 MNOK     — the sweet spot (decided 2026-08-06), called first
+ *   2. 10–20 MNOK     — the previous sweet spot, next in line
+ *   3. Under 10 MNOK  — real shop, real revenue, real pain
  *   4. Unknown revenue — kept, ranked below known-good leads
- *   5. Over 25 MNOK   — too big, wrong buyer (sinks to the bottom)
- * Within a tier, larger revenue ranks first.
+ *   5. Over 50 MNOK   — too big, wrong buyer (sinks to the bottom)
+ * Within a tier, larger revenue ranks first. Must stay in sync with
+ * revenuePriority in components/CallingSession.tsx.
  */
 export const PRIORITY_ORDER_BY = `
   CASE
-    WHEN revenue IS NOT NULL AND revenue >= 10000 AND revenue <= 20000 THEN 1
-    WHEN revenue IS NOT NULL AND revenue < 10000 THEN 2
-    WHEN revenue IS NOT NULL AND revenue <= 25000 THEN 3
+    WHEN revenue IS NOT NULL AND revenue > 20000 AND revenue <= 50000 THEN 1
+    WHEN revenue IS NOT NULL AND revenue >= 10000 THEN 2
+    WHEN revenue IS NOT NULL AND revenue < 10000 THEN 3
     WHEN revenue IS NULL THEN 4
     ELSE 5
   END ASC,
