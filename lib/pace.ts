@@ -26,6 +26,12 @@ const BREAK_GAP_SECONDS = 15 * 60
  * yesterday die without owing today anything extra — debt only carries one
  * day, so it expires unpaid rather than compounding.
  *
+ * Crucially, surplus never RELAYS: what a day passes on is capped at what
+ * that day itself rang beyond 60. A 113-day discounts the next day, but if
+ * that next day just rings its plain 60, the leftover 53 dies there — it
+ * cannot travel through to the day after. (The bug this cap fixed: 113,
+ * then 60, and the banner offered day three for 7.)
+ *
  * Implemented as a two-day walk of the same simulation callStreak runs, so
  * the banner and the streak can never disagree about what today requires.
  */
@@ -35,7 +41,9 @@ export function todaysTarget(yesterdayCalls: number, dayBeforeCalls: number, goa
   for (const calls of [dayBeforeCalls, yesterdayCalls]) {
     const need = Math.max(0, goal + debt - carry)
     if (calls >= need) {
-      carry = calls - need
+      // Surplus out = what's left after obligations, capped at what THIS
+      // day rang beyond its own goal — inherited carry expires, no relay.
+      carry = Math.max(0, Math.min(calls - need, calls - goal))
       debt = 0
     } else if (calls >= goal) {
       // Own day fine, inherited debt unpayable — it expires, chain resets.

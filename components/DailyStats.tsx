@@ -83,7 +83,9 @@ export function callStreak(totals: Map<string, number>, today: string, goal = GO
       status.set(d, 'ok')
       if (pendingDay) status.set(pendingDay, 'ok')
       pendingDay = null
-      carry = calls - need
+      // Capped at what THIS day rang beyond its own goal: surplus lives one
+      // day and never relays through a day that just did its job.
+      carry = Math.max(0, Math.min(calls - need, calls - goal))
       debt = 0
     } else if (calls >= goal) {
       // Own day fine, inherited debt unpaid — the pending day dies and the

@@ -46,8 +46,19 @@ describe('todaysTarget (carry model: surplus and debt carry one day, spent when 
     expect(todaysTarget(0, DOUBLE)).toBe(GOAL)
   })
 
-  it("calls on an earned day off carry forward — they weren't owed to anyone", () => {
-    expect(todaysTarget(8, DOUBLE)).toBe(GOAL - 8)
+  it('surplus never relays through a day that just did its job', () => {
+    // 113 Monday, 60 Tuesday: Monday's leftover discounted Tuesday's
+    // requirement, but Tuesday rang nothing beyond its own 60 — so nothing
+    // carries to Wednesday. (The bug: Wednesday was offered for 7.)
+    expect(todaysTarget(GOAL, 113)).toBe(GOAL)
+  })
+
+  it('a day passes on at most what it rang beyond its own goal', () => {
+    // Free day (after a 120) with 8 calls on it: 8 < 60, nothing carries.
+    expect(todaysTarget(8, DOUBLE)).toBe(GOAL)
+    // Debt day paid with room to spare: 150 covers 60 own + 52 debt, and
+    // the genuine leftover 38 discounts today.
+    expect(todaysTarget(150, 8)).toBe(GOAL - 38)
   })
 
   it('debt expires after one day — today never inherits two-day-old misses', () => {
