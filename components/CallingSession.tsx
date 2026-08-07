@@ -199,16 +199,31 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
 
   // Every 12s: heartbeat our current claim (so it never expires mid-call) and
   // refresh the list of who else is online + which companies they hold.
+  // Timers are suspended while the browser is backgrounded (i.e. during the
+  // actual phone call), so we also fire immediately when the tab becomes
+  // visible again to re-assert the claim, and we WATCH the heartbeat's answer:
+  // if the server says another caller now holds our company, surface it loudly
+  // instead of letting both work the same lead in silence.
   useEffect(() => {
     if (!sessionCaller) return
     const tick = async () => {
       const current = queueRef.current[indexRef.current]
       if (current) {
-        fetch('/api/session', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ caller_name: sessionCaller, company_id: current.id, company_name: current.company_name }),
-        }).catch(() => {})
+        try {
+          const res = await fetch('/api/session', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ caller_name: sessionCaller, company_id: current.id, company_name: current.company_name }),
+          })
+          if (res.ok) {
+            const { claimed } = await res.json()
+            // Only flag a conflict for the company we asked about — the answer
+            // may arrive after we've already advanced.
+            if (queueRef.current[indexRef.current]?.id === current.id) {
+              setClaimConflict(claimed ? null : current.id)
+            }
+          }
+        } catch { /* network glitch — keep last state */ }
       }
       try {
         const res = await fetch('/api/session')
@@ -221,7 +236,14 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
     }
     tick()
     const id = setInterval(tick, 12000)
-    return () => clearInterval(id)
+    const onVisible = () => { if (document.visibilityState === 'visible') tick() }
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', onVisible)
+    return () => {
+      clearInterval(id)
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', onVisible)
+    }
   }, [sessionCaller])
 
   const [telnyxFrom, setTelnyxFrom] = useState<string | null>(null)
@@ -312,6 +334,9 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
   interface CallerSession { caller_name: string; company_id: string | null; company_name: string | null }
   const [otherSessions, setOtherSessions] = useState<CallerSession[]>([])
   const claimedByOthers = useRef<Set<string>>(new Set())
+  // Set to the current company's id when the server told us another caller now
+  // holds OUR company (our claim was stolen while the tab was backgrounded).
+  const [claimConflict, setClaimConflict] = useState<string | null>(null)
 
   // Recording — the whole session lives in one ref so overlapping start/stop
   // (auto-record + outcome-click + advance) can never mix chunks between two
@@ -348,6 +373,9 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
   }
 
   const company = queue[index]
+
+  // A conflict belongs to one specific company — moving on clears it.
+  useEffect(() => { setClaimConflict(null) }, [company?.id])
 
   // Auto-record: when enabled, start a recording each time we land on a new
   // company (stops + saves when an outcome is chosen, or on advance). Only fires
@@ -818,6 +846,20 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
 
         {/* Company card — dialer console */}
         <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+
+          {/* Claim conflict: the other caller took this lead while our tab was
+              backgrounded (mid-call). Say it loudly — the alternative is both
+              of you calling the same person. */}
+          {claimConflict && company && claimConflict === company.id && (
+            <div className="px-4 sm:px-6 py-3 bg-white text-black flex items-center gap-3">
+              <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+              </svg>
+              <span className="text-sm font-bold">
+                {otherSessions.find(s => s.company_id === company.id)?.caller_name ?? 'The other caller'} has this lead now — coordinate before calling.
+              </span>
+            </div>
+          )}
 
           {/* Name + qualification strip */}
           <div className="px-4 sm:px-6 pt-4 sm:pt-5 pb-4 border-b border-gray-800">

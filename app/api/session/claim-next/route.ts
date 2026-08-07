@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { query } from '@/lib/db'
 
-const STALE = '90 seconds'
+// Must match app/api/session/route.ts — see the comment there: the browser is
+// backgrounded (heartbeats suspended) for the whole duration of a phone call,
+// so a short window lets the other caller steal a lead mid-conversation.
+const STALE = '10 minutes'
 
 async function checkAuth() {
   const cookieStore = await cookies()

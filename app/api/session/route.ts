@@ -3,9 +3,12 @@ import { cookies } from 'next/headers'
 import { query } from '@/lib/db'
 
 // A claim is considered active for this long after its last heartbeat.
-// The client heartbeats every 12s, so 90s tolerates several missed beats
-// before another caller can take over a dropped claim.
-const STALE = "90 seconds"
+// The client heartbeats every 12s while visible, BUT the browser is
+// backgrounded (timers suspended) the whole time a caller is actually on the
+// phone — so this must comfortably exceed a long call, or the other caller
+// steals the lead mid-conversation and both end up dialing the same person.
+// A closed tab still releases immediately via DELETE on unload.
+const STALE = "10 minutes"
 
 async function checkAuth() {
   const cookieStore = await cookies()
