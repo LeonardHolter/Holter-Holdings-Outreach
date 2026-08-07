@@ -369,8 +369,12 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
     setEmailField(c.email ?? '')
     setCallbackDay(c.callback_day ?? '')
     setCallbackTime(c.callback_time ?? '')
-    setCallbackDate(c.next_reach_out ?? '')
-    setShowCallback(!!(c.callback_day || c.callback_time || c.next_reach_out))
+    // Prefill only a future callback date. A due/past date is spent — carrying
+    // it into the field would write it back on the next log and re-arm the
+    // "callback due" queue priority forever.
+    const futureCallback = c.next_reach_out && c.next_reach_out > todayStr() ? c.next_reach_out : ''
+    setCallbackDate(futureCallback)
+    setShowCallback(!!(c.callback_day || c.callback_time || futureCallback))
     setState(c.state ?? '')
     setCompanyName(c.company_name ?? '')
     setNoteHistory([])
@@ -585,7 +589,14 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
         const autoReschedule = response === 'No answer'
           ? format(new Date(Date.now() + 7 * 86400000), 'yyyy-MM-dd')
           : nextRescheduleDate(company.google_reviews, newCallCount)
-        payload.next_reach_out = callbackDate || autoReschedule
+        // Only a FUTURE callback date is honored. The field is prefilled with
+        // the company's current date, so when a due callback is re-logged
+        // untouched, that stale (today/past) date used to be written back —
+        // keeping the lead "due" and pinning it to the top of the queue on
+        // every refresh.
+        payload.next_reach_out = callbackDate && callbackDate > todayStr()
+          ? callbackDate
+          : autoReschedule
         payload.amount_of_calls = newCallCount
         if (sessionCaller === 'Leonard') payload.calls_leonard = (company.calls_leonard ?? 0) + 1
         if (sessionCaller === 'William') payload.calls_william = (company.calls_william ?? 0) + 1
