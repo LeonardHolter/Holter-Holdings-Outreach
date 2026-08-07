@@ -75,18 +75,37 @@ function revenuePriority(c: Company): number {
   return 5                                             // over 50 MNOK — too big, skip
 }
 
+// An explicit callback promise: the lead was marked 'Call back later' with a
+// date, and that date has arrived. These outrank everything — the lead asked
+// to be called on this day. (Auto-rescheduled follow-ups and snoozed leads
+// carry other responses, so they don't jump the queue.)
+function callbackDateDue(c: Company): boolean {
+  return c.reach_out_response === 'Call back later'
+    && !!c.next_reach_out
+    && String(c.next_reach_out).slice(0, 10) <= todayStr()
+}
+
 function sortQueueByCallback(q: Company[]): Company[] {
   const score = (c: Company): number => {
     const notCalled = c.reach_out_response === 'Not called' || !c.reach_out_response
     const matches = callbackMatchesNow(c)
-    if (notCalled && matches) return 0
-    if (notCalled) return 1
-    if (matches) return 2
-    return 3
+    if (callbackDateDue(c)) return 0
+    if (notCalled && matches) return 1
+    if (notCalled) return 2
+    if (matches) return 3
+    return 4
   }
   return [...q].sort((a, b) => {
-    const sd = score(a) - score(b)
+    const sa = score(a)
+    const sd = sa - score(b)
     if (sd !== 0) return sd
+    // Among due callbacks: most overdue first, then by promised time of day.
+    if (sa === 0) {
+      const dd = String(a.next_reach_out).localeCompare(String(b.next_reach_out))
+      if (dd !== 0) return dd
+      const td = (a.callback_time ?? '99:99').localeCompare(b.callback_time ?? '99:99')
+      if (td !== 0) return td
+    }
     const pd = revenuePriority(a) - revenuePriority(b)
     if (pd !== 0) return pd
     return (b.revenue ?? 0) - (a.revenue ?? 0)
@@ -828,6 +847,15 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                   Callback now{company.callback_day ? ` · ${company.callback_day.slice(0,3)}` : ''}{company.callback_time ? ` ${company.callback_time.slice(0,5)}` : ''}
+                </span>
+              )}
+              {company && !callbackMatchesNow(company) && callbackDateDue(company) && (
+                <span className="inline-flex items-center gap-1 px-2 py-1 rounded border border-white text-white font-bold">
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  {String(company.next_reach_out).slice(0, 10) === todayStr() ? 'Callback today' : `Callback overdue · ${String(company.next_reach_out).slice(5, 10)}`}
+                  {company.callback_time ? ` · ${company.callback_time.slice(0, 5)}` : ''}
                 </span>
               )}
             </div>
