@@ -7,6 +7,7 @@ export function getResponseColor(response: string | null | undefined): string {
   if (response === 'Demo booked') return 'text-black bg-white font-bold'
   if (response === 'Not interested' || response === 'Wrong number') return 'text-red-300 bg-red-950/60'
   if (response === 'Call back later') return 'text-yellow-300 bg-yellow-950/60'
+  if (response === 'Email sendt') return 'text-gray-200 bg-gray-800/80'
   if (response === 'No answer') return 'text-orange-300 bg-orange-950/60'
   if (response === 'Not called') return 'text-gray-400 bg-gray-800/60'
   return 'text-gray-300'

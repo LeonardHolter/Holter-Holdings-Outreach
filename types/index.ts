@@ -95,6 +95,7 @@ export const RESPONSE_STATUSES = [
   'Not interested',
   'No answer',
   'Call back later',
+  'Email sendt',
   'Wrong number',
   'Not needed',
 ]
