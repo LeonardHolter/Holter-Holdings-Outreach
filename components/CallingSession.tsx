@@ -337,6 +337,9 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
   // Set to the current company's id when the server told us another caller now
   // holds OUR company (our claim was stolen while the tab was backgrounded).
   const [claimConflict, setClaimConflict] = useState<string | null>(null)
+  // False until this tab has exclusively reserved the on-screen lead. The CALL
+  // button stays locked while false — never dial an unreserved lead.
+  const [claimReady, setClaimReady] = useState(false)
 
   // Recording — the whole session lives in one ref so overlapping start/stop
   // (auto-record + outcome-click + advance) can never mix chunks between two
@@ -376,6 +379,19 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
 
   // A conflict belongs to one specific company — moving on clears it.
   useEffect(() => { setClaimConflict(null) }, [company?.id])
+
+  // Lost the claim (tab was backgrounded, the other caller was handed this
+  // lead): don't ask two remote callers to "coordinate" — hand off. Mark the
+  // company as theirs, save any typed field edits, and advance to the next
+  // free lead automatically.
+  useEffect(() => {
+    if (!claimConflict || !company || claimConflict !== company.id) return
+    claimedByOthers.current.add(claimConflict)
+    const other = otherSessions.find(s => s.company_id === claimConflict)?.caller_name ?? 'The other caller'
+    toast.error(`${other} has this lead — moving you to the next free one`, { duration: 6000 })
+    handleNext(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [claimConflict])
 
   // Auto-record: when enabled, start a recording each time we land on a new
   // company (stops + saves when an outcome is chosen, or on advance). Only fires
@@ -458,24 +474,29 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
       }
       return idx !== -1 ? idx : firstUncalled(q, fromIndex)
     } catch {
-      // Overlap service unreachable: don't silently double-call — warn and fall
-      // back to the next uncalled lead so calling still works.
-      toast.error('Overlap check unavailable — coordinate manually')
+      // Reservation service unreachable: calling must keep working (solo use,
+      // transient outage), but leads can overlap until it recovers — say so.
+      toast.error('Lead reservation unavailable — overlap possible until it recovers', { duration: 8000 })
       return firstUncalled(q, fromIndex)
     }
   }, [firstUncalled])
 
   // When a caller is selected, make sure the company on screen is actually ours.
   // If the other caller already holds it (e.g. both opened on the same top lead),
-  // jump forward to the first free one.
+  // jump forward to the first free one. Until this settles the CALL button is
+  // locked — both tabs render the same server-built queue at first paint, and
+  // dialing before the claim resolves is exactly how two callers end up on the
+  // same lead.
   useEffect(() => {
-    if (!sessionCaller) return
+    if (!sessionCaller) { setClaimReady(false); return }
     let cancelled = false
+    setClaimReady(false)
     ;(async () => {
       const i = await claimForward(queueRef.current, indexRef.current)
       if (cancelled) return
       if (i === -1) { setDone(true); return }
       if (i !== indexRef.current) { setIndex(i); loadCompany(queueRef.current[i]) }
+      setClaimReady(true)
     })()
     return () => { cancelled = true }
   }, [sessionCaller, claimForward, loadCompany])
@@ -856,7 +877,7 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
               </svg>
               <span className="text-sm font-bold">
-                {otherSessions.find(s => s.company_id === company.id)?.caller_name ?? 'The other caller'} has this lead now — coordinate before calling.
+                {otherSessions.find(s => s.company_id === company.id)?.caller_name ?? 'The other caller'} has this lead — moving you to the next free one…
               </span>
             </div>
           )}
@@ -914,10 +935,23 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
             </div>
           </div>
 
-          {/* Hero action: CALL */}
+          {/* Hero action: CALL. Locked until this tab holds the exclusive
+              claim on the lead — dialing before the reservation resolves is
+              how two callers end up talking to the same person. */}
           <div className="px-4 sm:px-6 py-4 border-b border-gray-800 space-y-3">
             <div className="flex items-stretch gap-2">
-              {phoneNumber && telnyxFrom && TELNYX_HERO_BUTTON_ENABLED ? (
+              {!(sessionCaller && claimReady) ? (
+                <div className="flex-1 flex items-center justify-center gap-2 h-14 rounded-xl border border-dashed border-gray-600 text-gray-400 text-sm font-medium">
+                  {!sessionCaller ? (
+                    'Select caller to start dialing'
+                  ) : (
+                    <>
+                      <span className="w-3.5 h-3.5 border border-gray-500 border-t-white rounded-full animate-spin" />
+                      Reserving this lead for you…
+                    </>
+                  )}
+                </div>
+              ) : phoneNumber && telnyxFrom && TELNYX_HERO_BUTTON_ENABLED ? (
                 <button
                   type="button"
                   onClick={telnyxCall}
