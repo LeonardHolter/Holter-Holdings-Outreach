@@ -10,10 +10,12 @@ import { query } from '@/lib/db'
 // 60 — so pass ?caller=Name to scope everything to one person. Without it
 // the numbers are team-wide.
 //
-// Counts come from companies.last_reach_out/who_called — the same source as
-// the Today KPI and per-person breakdown on /stats, so the banner can never
-// disagree with the page that judges the goal. Timestamps come from
-// call_events, the only place per-call times exist.
+// Counts come from call_events, the immutable one-row-per-call ledger (the
+// same source as /stats). They must NOT come from companies.last_reach_out/
+// who_called: that's the company's LATEST state, so every re-call rewrites
+// history — the previous caller's count drops and a company dialed twice
+// counts once. Days are bucketed in Europe/Oslo, matching the dates the
+// dialer writes.
 
 export const dynamic = 'force-dynamic'
 
@@ -27,17 +29,17 @@ export async function GET(req: NextRequest) {
 
   const [daily, events] = await Promise.all([
     query(
-      `SELECT last_reach_out::text AS day, COUNT(*)::int AS n
-       FROM companies
-       WHERE last_reach_out >= CURRENT_DATE - 2
-         AND ($1::text IS NULL OR who_called = $1)
+      `SELECT (created_at AT TIME ZONE 'Europe/Oslo')::date::text AS day, COUNT(*)::int AS n
+       FROM call_events
+       WHERE created_at >= NOW() - INTERVAL '4 days'
+         AND ($1::text IS NULL OR caller_name = $1)
        GROUP BY 1`,
       [caller],
     ),
     query(
       `SELECT created_at
        FROM call_events
-       WHERE created_at::date = CURRENT_DATE
+       WHERE (created_at AT TIME ZONE 'Europe/Oslo')::date = (NOW() AT TIME ZONE 'Europe/Oslo')::date
          AND ($1::text IS NULL OR caller_name = $1)
        ORDER BY created_at ASC`,
       [caller],
@@ -45,10 +47,11 @@ export async function GET(req: NextRequest) {
   ])
 
   const byDay = new Map(daily.map(r => [String(r.day).slice(0, 10), Number(r.n)]))
+  // Day strings must be Oslo-local to line up with the SQL bucketing above —
+  // the server itself runs in UTC.
   const dayStr = (offset: number) => {
-    const d = new Date()
-    d.setUTCDate(d.getUTCDate() - offset)
-    return d.toISOString().slice(0, 10)
+    const d = new Date(Date.now() - offset * 86400000)
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Oslo' }).format(d)
   }
 
   return NextResponse.json({

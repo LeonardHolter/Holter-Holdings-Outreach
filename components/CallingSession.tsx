@@ -660,13 +660,15 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
         }).catch(() => {})
       }
 
-      // Log this call as an event (independent of the company's latest state)
-      // so trend stats — dials-per-demo, DM conversion, time-of-day, callback
-      // conversion, revenue-tier performance — can be computed accurately.
+      // Log this call as an event — call_events is the ledger every call
+      // counter reads (pace banner, /stats), so a lost event is a permanently
+      // missing call. Retry once, and keepalive so the request survives the
+      // tab navigating or closing right after Log & Next.
       if (!skip && response) {
-        fetch('/api/call-events', {
+        const postEvent = () => fetch('/api/call-events', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          keepalive: true,
           body: JSON.stringify({
             company_id: company.id,
             caller_name: sessionCaller || null,
@@ -675,7 +677,10 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
             revenue_at_call: company.revenue ?? null,
             script: scriptRef.current || null,
           }),
-        }).catch(() => {})
+        }).then(r => { if (!r.ok) throw new Error() })
+        postEvent().catch(() => {
+          setTimeout(() => { postEvent().catch(() => {}) }, 2000)
+        })
       }
 
       if (!skip) {

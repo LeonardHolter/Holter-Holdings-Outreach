@@ -41,9 +41,35 @@ export interface IndustryWinCount {
 }
 
 async function fetchStatRows(): Promise<StatRow[]> {
-  const rows = await query(`
+  // Daily counts come from call_events — one immutable row per logged call.
+  // They must NOT come from companies.last_reach_out/who_called (the
+  // company's LATEST state): every re-call rewrites that history, silently
+  // shrinking the previous caller's numbers, and a company dialed twice only
+  // counts once. Days are bucketed in Europe/Oslo (the dates callers see).
+  // Demo outcomes live on the company, so a Won is attributed to the call
+  // that booked the demo via the join.
+  const eventRows = await query(`
     SELECT
-      DATE(last_reach_out) AS date,
+      (e.created_at AT TIME ZONE 'Europe/Oslo')::date::text AS date,
+      e.caller_name AS who_called,
+      e.response AS reach_out_response,
+      CASE WHEN e.response = 'Demo booked' THEN c.demo_outcome END AS demo_outcome,
+      COUNT(*)::int AS n
+    FROM call_events e
+    LEFT JOIN companies c ON c.id = e.company_id
+    WHERE e.created_at >= NOW() - INTERVAL '364 days'
+    GROUP BY 1, 2, 3, 4
+  `)
+
+  // Calls logged before the event ledger existed only live in companies'
+  // latest state — keep that (lossy) history for days strictly before the
+  // first event so old charts don't go blank.
+  const firstEventDay = eventRows.length
+    ? eventRows.reduce((min, r) => (String(r.date) < min ? String(r.date) : min), '9999-12-31')
+    : null
+  const legacyRows = await query(
+    `SELECT
+      DATE(last_reach_out)::text AS date,
       who_called,
       reach_out_response,
       demo_outcome,
@@ -51,9 +77,12 @@ async function fetchStatRows(): Promise<StatRow[]> {
     FROM companies
     WHERE last_reach_out IS NOT NULL
       AND last_reach_out >= CURRENT_DATE - INTERVAL '364 days'
-    GROUP BY DATE(last_reach_out), who_called, reach_out_response, demo_outcome
-  `)
-  return rows.map(r => ({
+      AND ($1::date IS NULL OR last_reach_out < $1::date)
+    GROUP BY 1, 2, 3, 4`,
+    [firstEventDay]
+  )
+
+  return [...eventRows, ...legacyRows].map(r => ({
     date: String(r.date).slice(0, 10),
     who_called: r.who_called,
     reach_out_response: r.reach_out_response,
