@@ -124,14 +124,12 @@ interface Metrics {
   answered: number
   noAnswer: number
   demos: number
-  won: number
   notInterested: number
   callback: number
   wrong: number
   notNeeded: number
   pickupRate: number
   demoRate: number
-  wonRate: number
   notInterestedRate: number
 }
 
@@ -140,14 +138,13 @@ export function aggregate(rows: StatRow[]): Metrics {
   const calls = rows.reduce((s, r) => s + r.n, 0)
   const noAnswer = sum(r => r.reach_out_response === 'No answer')
   const demos = sum(r => r.reach_out_response === 'Demo booked')
-  const won = sum(r => r.demo_outcome === 'Won')
   const notInterested = sum(r => r.reach_out_response === 'Not interested')
   const callback = sum(r => r.reach_out_response === 'Call back later')
   const wrong = sum(r => r.reach_out_response === 'Wrong number')
   const notNeeded = sum(r => r.reach_out_response === 'Not needed')
   const answered = calls - noAnswer
   return {
-    calls, answered, noAnswer, demos, won, notInterested, callback, wrong, notNeeded,
+    calls, answered, noAnswer, demos, notInterested, callback, wrong, notNeeded,
     // Pickup is the ONLY rate measured against every dial — it is the metric
     // that asks "did anyone answer". Everything below describes what happened
     // IN a conversation, so it divides by `answered`: a phone nobody picked up
@@ -155,7 +152,9 @@ export function aggregate(rows: StatRow[]): Metrics {
     // the denominator just dilutes every conversion number by your pickup rate.
     pickupRate: calls ? answered / calls : 0,
     demoRate: answered ? demos / answered : 0,
-    wonRate: answered ? won / answered : 0,
+    // No wonRate here on purpose: StatRow can only see a win whose booking call
+    // still exists in the event ledger, so it undercounts. Wins come from
+    // winsByCaller via wonAllTime — one source, page-wide.
     notInterestedRate: answered ? notInterested / answered : 0,
   }
 }
@@ -190,6 +189,42 @@ interface EventMetrics {
 /** An event counts as answered unless it was explicitly logged "No answer".
  *  Same rule everywhere a conversation-rate denominator is needed. */
 const isAnswered = (e: CallEvent) => Boolean(e.response) && e.response !== 'No answer'
+
+export interface WonRate {
+  won: number
+  answered: number
+  /** null when nobody has answered yet — "—" on the page, never 0% or NaN. */
+  rate: number | null
+}
+
+/**
+ * THE win calculation for /stats, keyed by caller plus a 'Team' total.
+ *
+ * Always all-time: a deal closes weeks after the call that sourced it, so
+ * slicing wins by period would credit the wrong day and read as noise.
+ *
+ * Wins come from winsByCaller (every company marked Won, attributed like the
+ * nav leaderboard) — NOT from StatRow.demo_outcome, which can only see a win
+ * whose booking call still exists in the event ledger and so undercounts.
+ * The denominator is answered call_events: nobody buys off a phone that was
+ * never picked up, so counting those would just dilute the rate by pickup.
+ */
+export function wonRatesByCaller(
+  events: CallEvent[],
+  callerWins: { name: string; wins: number }[],
+  roster: readonly string[] = CALLERS,
+): Map<string, WonRate> {
+  const build = (evs: CallEvent[], won: number): WonRate => {
+    const answered = evs.filter(isAnswered).length
+    return { won, answered, rate: answered ? won / answered : null }
+  }
+  const byCaller = new Map<string, WonRate>()
+  for (const c of roster) {
+    byCaller.set(c, build(events.filter(e => e.caller_name === c), callerWins.find(w => w.name === c)?.wins ?? 0))
+  }
+  byCaller.set('Team', build(events, callerWins.reduce((s, w) => s + w.wins, 0)))
+  return byCaller
+}
 
 export function aggregateEvents(events: CallEvent[]): EventMetrics {
   const dials = events.length
@@ -404,7 +439,6 @@ export function DailyStats({ rows, events, demoOutcomes, industryWins = [], call
   // KPI cards (fixed periods, independent of the tab)
   const todayM = aggregate(rows.filter(r => r.date === today))
   const weekM = aggregate(rows.filter(r => r.date >= weekAgo))
-  const allM = aggregate(rows)
   const goalMet = todayM.calls >= TEAM_GOAL
 
   // Event-log-derived metrics, filtered by the same period tab as Breakdown.
@@ -416,6 +450,13 @@ export function DailyStats({ rows, events, demoOutcomes, industryWins = [], call
   const tierPerf = useMemo(() => revenueTierPerf(periodEvents), [periodEvents])
   // All events, not periodEvents — the industry table is deliberately all-time.
   const industries = useMemo(() => industryPerf(events, industryWins), [events, industryWins])
+
+  // Every Won % on this page — both tables and the KPI — reads from this one
+  // map, so they can never disagree again.
+  const wonAllTime = useMemo(() => wonRatesByCaller(events, callerWins), [events, callerWins])
+  const wonRateFor = (caller: string): WonRate =>
+    wonAllTime.get(caller) ?? { won: 0, answered: 0, rate: null }
+  const teamWon = wonRateFor('Team')
 
   // Demo outcomes (all-time — demos are too sparse to slice by period).
   const demoStats = useMemo(() => {
@@ -544,8 +585,8 @@ export function DailyStats({ rows, events, demoOutcomes, industryWins = [], call
           <span className="text-xs text-gray-600">{pct(weekM.pickupRate)} pickup ({weekM.answered})</span>
         </Kpi>
         <Kpi label="Won rate (all)" info="Deals won ÷ ANSWERED calls, all time. Divided by answered rather than total dials — nobody buys off a phone that never got picked up, so counting those would just dilute the number by your pickup rate.">
-          <span className="text-3xl font-bold tabular-nums text-green-400">{allM.answered ? pct1(allM.wonRate) : '—'}</span>
-          <span className="text-xs text-gray-600">{allM.won} won ÷ {allM.answered} answered</span>
+          <span className="text-3xl font-bold tabular-nums text-green-400">{teamWon.rate != null ? pct1(teamWon.rate) : '—'}</span>
+          <span className="text-xs text-gray-600">{teamWon.won} won ÷ {teamWon.answered} answered</span>
         </Kpi>
         <Kpi label="Demo won rate (all)" info="Demos marked Won ÷ demos with a decided outcome (Won + Lost), all time. Demos still awaiting an outcome are excluded so a full pipeline doesn't drag the number down.">
           <span className="text-3xl font-bold tabular-nums text-green-400">{demoStats.winRate != null ? pct(demoStats.winRate) : '—'}</span>
@@ -576,7 +617,7 @@ export function DailyStats({ rows, events, demoOutcomes, industryWins = [], call
                 <th className="text-right font-semibold py-2 px-3">Pickup&nbsp;%<Info text="Answered ÷ calls. The only rate here measured against every dial — it is the metric that asks whether anyone picked up. Bracketed number is the answered count." /></th>
                 <th className="text-right font-semibold py-2 px-3">Demos<Info text="Calls whose outcome was “Demo booked” in the period." /></th>
                 <th className="text-right font-semibold py-2 px-3">Demo&nbsp;%<Info text="Demos ÷ ANSWERED calls. Divided by answered, not total dials: an unanswered phone cannot book a demo, so including it would only dilute the rate by your pickup rate." /></th>
-                <th className="text-right font-semibold py-2 px-3">Won&nbsp;%<Info text="Calls whose demo was later marked Won ÷ ANSWERED calls. Same answered-based denominator as Demo %, so the two are directly comparable." /></th>
+                <th className="text-right font-semibold py-2 px-3">Won&nbsp;%&nbsp;(all)<Info text="Deals won ÷ ANSWERED calls, ALL TIME — the only column here that ignores the period tabs. A deal closes weeks after the call that sourced it, so pinning wins to a day would credit the wrong one. Identical to the Sales Performance table below: same wins, same denominator." /></th>
                 <th className="text-right font-semibold py-2 px-3">No&nbsp;answer<Info text="Calls whose outcome was “No answer” — nobody picked up." /></th>
                 <th className="text-right font-semibold py-2 px-3">Not&nbsp;int.<Info text="Calls whose outcome was “Not interested”." /></th>
                 <th className="text-right font-semibold py-2 px-3">Not&nbsp;int.&nbsp;%<Info text="Not interested ÷ ANSWERED calls. Only someone who picked up can decline, so dials that never connected are excluded." /></th>
@@ -586,6 +627,7 @@ export function DailyStats({ rows, events, demoOutcomes, industryWins = [], call
             <tbody>
               {CALLERS.map(caller => {
                 const m = metricsFor(caller)
+                const w = wonRateFor(caller)
                 return (
                   <tr key={caller} className="border-b border-gray-800/60">
                     <td className="py-2.5 pr-3">
@@ -598,7 +640,7 @@ export function DailyStats({ rows, events, demoOutcomes, industryWins = [], call
                     <td className="text-right tabular-nums text-gray-300 py-2.5 px-3">{m.calls ? pctOf(m.pickupRate, m.answered) : '—'}</td>
                     <td className="text-right tabular-nums text-green-400 py-2.5 px-3">{m.demos}</td>
                     <td className="text-right tabular-nums text-gray-300 py-2.5 px-3">{m.answered ? pctFrac(m.demoRate, m.demos, m.answered) : '—'}</td>
-                    <td className="text-right tabular-nums text-green-400 py-2.5 px-3">{m.answered ? pctFrac(m.wonRate, m.won, m.answered) : '—'}</td>
+                    <td className="text-right tabular-nums text-green-400 py-2.5 px-3">{w.rate != null ? pctFrac(w.rate, w.won, w.answered) : '—'}</td>
                     <td className="text-right tabular-nums text-gray-500 py-2.5 px-3">{m.noAnswer}</td>
                     <td className="text-right tabular-nums text-gray-500 py-2.5 px-3">{m.notInterested}</td>
                     <td className="text-right tabular-nums text-red-400/80 py-2.5 px-3">{m.answered ? pctFrac0(m.notInterestedRate, m.notInterested, m.answered) : '—'}</td>
@@ -608,6 +650,7 @@ export function DailyStats({ rows, events, demoOutcomes, industryWins = [], call
               })}
               {(() => {
                 const m = metricsFor('Team')
+                const w = wonRateFor('Team')
                 return (
                   <tr className="font-semibold">
                     <td className="py-2.5 pr-3 text-gray-300">Team total</td>
@@ -615,7 +658,7 @@ export function DailyStats({ rows, events, demoOutcomes, industryWins = [], call
                     <td className="text-right tabular-nums text-gray-200 py-2.5 px-3">{m.calls ? pctOf(m.pickupRate, m.answered) : '—'}</td>
                     <td className="text-right tabular-nums text-green-400 py-2.5 px-3">{m.demos}</td>
                     <td className="text-right tabular-nums text-gray-200 py-2.5 px-3">{m.answered ? pctFrac(m.demoRate, m.demos, m.answered) : '—'}</td>
-                    <td className="text-right tabular-nums text-green-300 py-2.5 px-3">{m.answered ? pctFrac(m.wonRate, m.won, m.answered) : '—'}</td>
+                    <td className="text-right tabular-nums text-green-300 py-2.5 px-3">{w.rate != null ? pctFrac(w.rate, w.won, w.answered) : '—'}</td>
                     <td className="text-right tabular-nums text-gray-500 py-2.5 px-3">{m.noAnswer}</td>
                     <td className="text-right tabular-nums text-gray-500 py-2.5 px-3">{m.notInterested}</td>
                     <td className="text-right tabular-nums text-red-400/80 py-2.5 px-3">{m.answered ? pctFrac0(m.notInterestedRate, m.notInterested, m.answered) : '—'}</td>
@@ -650,8 +693,7 @@ export function DailyStats({ rows, events, demoOutcomes, industryWins = [], call
               <tbody>
                 {CALLERS.map(caller => {
                   const evs = events.filter(e => e.caller_name === caller)
-                  const answered = evs.filter(isAnswered).length
-                  const won = callerWins.find(w => w.name === caller)?.wins ?? 0
+                  const w = wonRateFor(caller)
                   return (
                     <tr key={caller} className="border-b border-gray-800/60">
                       <td className="py-2.5 pr-3">
@@ -661,27 +703,23 @@ export function DailyStats({ rows, events, demoOutcomes, industryWins = [], call
                         </span>
                       </td>
                       <td className="text-right tabular-nums text-white py-2.5 px-3">{evs.length}</td>
-                      <td className="text-right tabular-nums text-white py-2.5 px-3">{won}</td>
+                      <td className="text-right tabular-nums text-white py-2.5 px-3">{w.won}</td>
                       <td className="text-right tabular-nums text-green-400 py-2.5 pl-3">
-                        {answered ? pctFrac(won / answered, won, answered) : '—'}
+                        {w.rate != null ? pctFrac(w.rate, w.won, w.answered) : '—'}
                       </td>
                     </tr>
                   )
                 })}
-                {(() => {
-                  const answered = events.filter(isAnswered).length
-                  const won = callerWins.reduce((s, w) => s + w.wins, 0)
-                  return (
-                    <tr className="font-semibold">
-                      <td className="py-2.5 pr-3 text-gray-300">Team total</td>
-                      <td className="text-right tabular-nums text-white py-2.5 px-3">{events.length}</td>
-                      <td className="text-right tabular-nums text-white py-2.5 px-3">{won}</td>
-                      <td className="text-right tabular-nums text-green-300 py-2.5 pl-3">
-                        {answered ? pctFrac(won / answered, won, answered) : '—'}
-                      </td>
-                    </tr>
-                  )
-                })()}
+                {(
+                  <tr className="font-semibold">
+                    <td className="py-2.5 pr-3 text-gray-300">Team total</td>
+                    <td className="text-right tabular-nums text-white py-2.5 px-3">{events.length}</td>
+                    <td className="text-right tabular-nums text-white py-2.5 px-3">{teamWon.won}</td>
+                    <td className="text-right tabular-nums text-green-300 py-2.5 pl-3">
+                      {teamWon.rate != null ? pctFrac(teamWon.rate, teamWon.won, teamWon.answered) : '—'}
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -698,7 +736,7 @@ export function DailyStats({ rows, events, demoOutcomes, industryWins = [], call
           <div className="grid grid-cols-3 gap-3">
             <DayStat label="Show rate" info="Demos held ÷ demos that resolved either way (held + no-show). Demos still in the future are excluded, so a full calendar doesn't drag it down." value={demoStats.showRate != null ? pct(demoStats.showRate) : '—'} />
             <DayStat label="Win rate" info="Demos marked Won ÷ demos with a decided outcome (Won + Lost). Demos awaiting an outcome are excluded." value={demoStats.winRate != null ? pct(demoStats.winRate) : '—'} />
-            <DayStat label="Won / answered" info="Deals won ÷ answered calls (all time). The bottom line: of every conversation you actually had, how many ended as a paying customer. Divided by answered rather than dials so it doesn't sink just because pickup was low." value={allM.answered ? pct1(demoStats.won / allM.answered) : '—'} />
+            <DayStat label="Won / answered" info="Deals won ÷ answered calls (all time). The bottom line: of every conversation you actually had, how many ended as a paying customer. Divided by answered rather than dials so it doesn't sink just because pickup was low. Same wins and same denominator as the Won % columns above." value={teamWon.rate != null ? pct1(teamWon.rate) : '—'} />
           </div>
           <div className="flex flex-wrap gap-x-3 gap-y-1 mt-3 text-xs text-gray-500">
             <span>{demoStats.held} held</span>

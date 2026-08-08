@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { aggregate, aggregateEvents, revenueTierPerf } from '@/components/DailyStats'
+import { aggregate, aggregateEvents, revenueTierPerf, wonRatesByCaller } from '@/components/DailyStats'
 import type { StatRow, CallEvent } from '@/app/stats/page'
 
 // The rule these tests exist to protect: pickup is the ONLY rate measured
@@ -44,12 +44,6 @@ describe('conversation rates divide by answered calls', () => {
     expect(m.demoRate).not.toBeCloseTo(18 / 100, 6)
   })
 
-  it('won rate uses answered, not total dials', () => {
-    expect(m.won).toBe(6)
-    expect(m.wonRate).toBeCloseTo(6 / 60, 6)
-    expect(m.wonRate).not.toBeCloseTo(6 / 100, 6)
-  })
-
   it('not-interested uses answered — an unanswered phone cannot decline', () => {
     expect(m.notInterestedRate).toBeCloseTo(18 / 60, 6)
     expect(m.notInterestedRate).not.toBeCloseTo(18 / 100, 6)
@@ -58,7 +52,7 @@ describe('conversation rates divide by answered calls', () => {
   it('a day with zero answered calls yields 0, never NaN or Infinity', () => {
     const none = aggregate([row({ n: 25, reach_out_response: 'No answer' })])
     expect(none.answered).toBe(0)
-    for (const r of [none.demoRate, none.wonRate, none.notInterestedRate]) {
+    for (const r of [none.demoRate, none.notInterestedRate]) {
       expect(Number.isFinite(r)).toBe(true)
       expect(r).toBe(0)
     }
@@ -104,6 +98,40 @@ describe('event-derived rates', () => {
 
   it('DM→demo divides by DM-reached calls, the pure closing number', () => {
     expect(aggregateEvents(EVENTS).dmToDemoRate).toBeCloseTo(2 / 3, 6)
+  })
+
+  it('won rates come from winsByCaller, never from the event ledger', () => {
+    // The bug this guards: /stats once counted a win only if a 'Demo booked'
+    // row still existed in call_events, so the Breakdown showed 1 win while
+    // Sales Performance showed 2. Here Leonard has NO booking event at all —
+    // his 2 wins must still be reported, against his answered calls.
+    const events: CallEvent[] = [
+      ...Array.from({ length: 3 }, () => ev('No answer')),
+      ev('Not interested'),
+      ev('Call back later'),
+      ev('Email sendt', { caller_name: 'William' }),
+      ev('No answer', { caller_name: 'William' }),
+    ]
+    const wins = [{ name: 'Leonard', wins: 2 }, { name: 'William', wins: 1 }]
+    const m = wonRatesByCaller(events, wins)
+
+    const leonard = m.get('Leonard')!
+    expect(leonard.won).toBe(2)
+    expect(leonard.answered).toBe(2) // 5 dials, 3 of them no-answer
+    expect(leonard.rate).toBeCloseTo(2 / 2, 6)
+    expect(leonard.rate).not.toBeCloseTo(2 / 5, 6) // would be per-dial
+
+    const team = m.get('Team')!
+    expect(team.won).toBe(3)
+    expect(team.answered).toBe(3)
+    expect(team.rate).toBeCloseTo(3 / 3, 6)
+  })
+
+  it('a caller with no answered calls yields null, not 0% or NaN', () => {
+    const m = wonRatesByCaller([ev('No answer')], [{ name: 'Leonard', wins: 0 }])
+    expect(m.get('Leonard')!.answered).toBe(0)
+    expect(m.get('Leonard')!.rate).toBeNull()
+    expect(m.get('William')!.rate).toBeNull()
   })
 
   it('revenue-tier demo rate uses answered, so a tier that just picks up more does not look better', () => {
