@@ -206,23 +206,29 @@ export interface WonRate {
  * Wins come from winsByCaller (every company marked Won, attributed like the
  * nav leaderboard) — NOT from StatRow.demo_outcome, which can only see a win
  * whose booking call still exists in the event ledger and so undercounts.
- * The denominator is answered call_events: nobody buys off a phone that was
- * never picked up, so counting those would just dilute the rate by pickup.
+ *
+ * The denominator is answered calls from `rows`, the SAME source Pickup % is
+ * measured against, so a caller's row reads with one consistent answered
+ * count. It must not come from call_events: that ledger starts partway
+ * through the history, and an all-time win numerator over a ledger-only
+ * denominator both contradicts the Pickup cell beside it and inflates the
+ * rate. Dividing by answered rather than dials is deliberate — nobody buys
+ * off a phone that was never picked up.
  */
 export function wonRatesByCaller(
-  events: CallEvent[],
+  rows: StatRow[],
   callerWins: { name: string; wins: number }[],
   roster: readonly string[] = CALLERS,
 ): Map<string, WonRate> {
-  const build = (evs: CallEvent[], won: number): WonRate => {
-    const answered = evs.filter(isAnswered).length
+  const build = (rs: StatRow[], won: number): WonRate => {
+    const { answered } = aggregate(rs)
     return { won, answered, rate: answered ? won / answered : null }
   }
   const byCaller = new Map<string, WonRate>()
   for (const c of roster) {
-    byCaller.set(c, build(events.filter(e => e.caller_name === c), callerWins.find(w => w.name === c)?.wins ?? 0))
+    byCaller.set(c, build(rows.filter(r => r.who_called === c), callerWins.find(w => w.name === c)?.wins ?? 0))
   }
-  byCaller.set('Team', build(events, callerWins.reduce((s, w) => s + w.wins, 0)))
+  byCaller.set('Team', build(rows, callerWins.reduce((s, w) => s + w.wins, 0)))
   return byCaller
 }
 
@@ -453,7 +459,17 @@ export function DailyStats({ rows, events, demoOutcomes, industryWins = [], call
 
   // Every Won % on this page — both tables and the KPI — reads from this one
   // map, so they can never disagree again.
-  const wonAllTime = useMemo(() => wonRatesByCaller(events, callerWins), [events, callerWins])
+  const wonAllTime = useMemo(() => wonRatesByCaller(rows, callerWins), [rows, callerWins])
+  // All-time call/answered counts per caller, from the same `rows` the
+  // Breakdown and the win rates use — so Sales Performance can't quote a dial
+  // count that disagrees with the answered count sitting next to it.
+  const allTime = useMemo(() => {
+    const m = new Map<string, Metrics>()
+    for (const c of CALLERS) m.set(c, aggregate(rows.filter(r => r.who_called === c)))
+    m.set('Team', aggregate(rows))
+    return m
+  }, [rows])
+  const allTimeFor = (caller: string) => allTime.get(caller) ?? aggregate([])
   const wonRateFor = (caller: string): WonRate =>
     wonAllTime.get(caller) ?? { won: 0, answered: 0, rate: null }
   const teamWon = wonRateFor('Team')
@@ -677,7 +693,7 @@ export function DailyStats({ rows, events, demoOutcomes, industryWins = [], call
           <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Sales Performance</h2>
           <span className="text-[10px] text-gray-600">All time</span>
         </div>
-        {events.length === 0 ? (
+        {allTimeFor('Team').calls === 0 ? (
           <p className="text-xs text-gray-600">No logged calls yet — these numbers start filling in as you use the dialer.</p>
         ) : (
           <div className="overflow-x-auto">
@@ -685,14 +701,13 @@ export function DailyStats({ rows, events, demoOutcomes, industryWins = [], call
               <thead>
                 <tr className="text-xs text-gray-500 uppercase tracking-wider border-b border-gray-800">
                   <th className="text-left font-semibold py-2 pr-3">Caller</th>
-                  <th className="text-right font-semibold py-2 px-3">Dials<Info text="All logged calls by this caller, all time." /></th>
+                  <th className="text-right font-semibold py-2 px-3">Calls<Info text="All logged calls by this caller, all time — the same figure as the Breakdown's Calls column on All time." /></th>
                   <th className="text-right font-semibold py-2 px-3">Won<Info text="Deals won, attributed like the leaderboard: whoever booked the demo, else the last caller, else the only person who ever dialled the company." /></th>
                   <th className="text-right font-semibold py-2 pl-3">Won&nbsp;%<Info text="Deals won ÷ ANSWERED calls — of the conversations this caller actually had, how many ended as a paying customer. The one number that decides everything else." /></th>
                 </tr>
               </thead>
               <tbody>
                 {CALLERS.map(caller => {
-                  const evs = events.filter(e => e.caller_name === caller)
                   const w = wonRateFor(caller)
                   return (
                     <tr key={caller} className="border-b border-gray-800/60">
@@ -702,7 +717,7 @@ export function DailyStats({ rows, events, demoOutcomes, industryWins = [], call
                           {caller}
                         </span>
                       </td>
-                      <td className="text-right tabular-nums text-white py-2.5 px-3">{evs.length}</td>
+                      <td className="text-right tabular-nums text-white py-2.5 px-3">{allTimeFor(caller).calls}</td>
                       <td className="text-right tabular-nums text-white py-2.5 px-3">{w.won}</td>
                       <td className="text-right tabular-nums text-green-400 py-2.5 pl-3">
                         {w.rate != null ? pctFrac(w.rate, w.won, w.answered) : '—'}
@@ -713,7 +728,7 @@ export function DailyStats({ rows, events, demoOutcomes, industryWins = [], call
                 {(
                   <tr className="font-semibold">
                     <td className="py-2.5 pr-3 text-gray-300">Team total</td>
-                    <td className="text-right tabular-nums text-white py-2.5 px-3">{events.length}</td>
+                    <td className="text-right tabular-nums text-white py-2.5 px-3">{allTimeFor('Team').calls}</td>
                     <td className="text-right tabular-nums text-white py-2.5 px-3">{teamWon.won}</td>
                     <td className="text-right tabular-nums text-green-300 py-2.5 pl-3">
                       {teamWon.rate != null ? pctFrac(teamWon.rate, teamWon.won, teamWon.answered) : '—'}

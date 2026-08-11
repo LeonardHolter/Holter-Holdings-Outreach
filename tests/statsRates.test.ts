@@ -60,6 +60,54 @@ describe('conversation rates divide by answered calls', () => {
   })
 })
 
+describe('won rate: one source for wins, one denominator with pickup', () => {
+  // Leonard: 50 calls, 20 no-answer → 30 answered.
+  // William: 20 calls, 10 no-answer → 10 answered.
+  // Deliberately NO demo_outcome anywhere: in production a win often has no
+  // booking call left in the ledger, and it must still be counted.
+  const WON_ROWS: StatRow[] = [
+    row({ n: 20, reach_out_response: 'No answer' }),
+    row({ n: 10, reach_out_response: 'Demo booked' }),
+    row({ n: 20, reach_out_response: 'Not interested' }),
+    row({ n: 10, who_called: 'William', reach_out_response: 'No answer' }),
+    row({ n: 10, who_called: 'William', reach_out_response: 'Call back later' }),
+  ]
+  const WINS = [{ name: 'Leonard', wins: 3 }, { name: 'William', wins: 1 }]
+
+  it('divides by the SAME answered count Pickup % is measured against', () => {
+    // The bug this guards: Won % once divided by answered call_events while
+    // Pickup % divided by answered StatRows, so one row read "60% (560)"
+    // next to "(2/489)" — two different denominators for the same calls.
+    const leonardRows = WON_ROWS.filter(r => r.who_called === 'Leonard')
+    const leonard = wonRatesByCaller(WON_ROWS, WINS).get('Leonard')!
+    expect(leonard.answered).toBe(aggregate(leonardRows).answered)
+    expect(leonard.answered).toBe(30)
+  })
+
+  it('counts wins that have no booking call in the ledger', () => {
+    const m = wonRatesByCaller(WON_ROWS, WINS)
+    expect(m.get('Leonard')!.won).toBe(3)
+    expect(m.get('Leonard')!.rate).toBeCloseTo(3 / 30, 6)
+    expect(m.get('Leonard')!.rate).not.toBeCloseTo(3 / 50, 6) // never per-dial
+    expect(m.get('William')!.rate).toBeCloseTo(1 / 10, 6)
+    const team = m.get('Team')!
+    expect(team.won).toBe(4)
+    expect(team.answered).toBe(40)
+  })
+
+  it('never reads wins from StatRow.demo_outcome — winsByCaller is the only source', () => {
+    const withOutcome = [...WON_ROWS, row({ n: 7, reach_out_response: 'Demo booked', demo_outcome: 'Won' })]
+    expect(wonRatesByCaller(withOutcome, []).get('Leonard')!.won).toBe(0)
+  })
+
+  it('a caller with no answered calls yields null, not 0% or NaN', () => {
+    const m = wonRatesByCaller([row({ n: 25, reach_out_response: 'No answer' })], WINS)
+    expect(m.get('Leonard')!.answered).toBe(0)
+    expect(m.get('Leonard')!.rate).toBeNull()
+    expect(m.get('William')!.rate).toBeNull()
+  })
+})
+
 const ev = (response: string, extra: Partial<CallEvent> = {}): CallEvent => ({
   company_id: 'c1',
   caller_name: 'Leonard',
@@ -98,40 +146,6 @@ describe('event-derived rates', () => {
 
   it('DM→demo divides by DM-reached calls, the pure closing number', () => {
     expect(aggregateEvents(EVENTS).dmToDemoRate).toBeCloseTo(2 / 3, 6)
-  })
-
-  it('won rates come from winsByCaller, never from the event ledger', () => {
-    // The bug this guards: /stats once counted a win only if a 'Demo booked'
-    // row still existed in call_events, so the Breakdown showed 1 win while
-    // Sales Performance showed 2. Here Leonard has NO booking event at all —
-    // his 2 wins must still be reported, against his answered calls.
-    const events: CallEvent[] = [
-      ...Array.from({ length: 3 }, () => ev('No answer')),
-      ev('Not interested'),
-      ev('Call back later'),
-      ev('Email sendt', { caller_name: 'William' }),
-      ev('No answer', { caller_name: 'William' }),
-    ]
-    const wins = [{ name: 'Leonard', wins: 2 }, { name: 'William', wins: 1 }]
-    const m = wonRatesByCaller(events, wins)
-
-    const leonard = m.get('Leonard')!
-    expect(leonard.won).toBe(2)
-    expect(leonard.answered).toBe(2) // 5 dials, 3 of them no-answer
-    expect(leonard.rate).toBeCloseTo(2 / 2, 6)
-    expect(leonard.rate).not.toBeCloseTo(2 / 5, 6) // would be per-dial
-
-    const team = m.get('Team')!
-    expect(team.won).toBe(3)
-    expect(team.answered).toBe(3)
-    expect(team.rate).toBeCloseTo(3 / 3, 6)
-  })
-
-  it('a caller with no answered calls yields null, not 0% or NaN', () => {
-    const m = wonRatesByCaller([ev('No answer')], [{ name: 'Leonard', wins: 0 }])
-    expect(m.get('Leonard')!.answered).toBe(0)
-    expect(m.get('Leonard')!.rate).toBeNull()
-    expect(m.get('William')!.rate).toBeNull()
   })
 
   it('revenue-tier demo rate uses answered, so a tier that just picks up more does not look better', () => {
