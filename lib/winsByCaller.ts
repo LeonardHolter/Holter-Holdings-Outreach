@@ -4,6 +4,10 @@ import { query } from '@/lib/db'
 // leaderboard and the Sales Performance table on /stats, so the two can
 // never disagree.
 //
+// Targets only: an intermediary (accountant) is a referral relationship with
+// no deal of its own to win, and counting one here would inflate the rate
+// against a denominator of target conversations.
+//
 // Attribution mirrors the Won list on /demos exactly: prefer whoever
 // actually booked the demo (latest 'Demo booked' call event), fall back to
 // companies.who_called, and finally infer from the per-person counters when
@@ -42,6 +46,7 @@ export async function winsByCaller(): Promise<LeaderRow[]> {
        LIMIT 1
      ) b ON true
      WHERE c.demo_outcome = 'Won'
+       AND COALESCE(c.lead_type, 'target') <> 'intermediary'
      GROUP BY 1`,
   )
 

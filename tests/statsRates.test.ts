@@ -13,6 +13,7 @@ const row = (r: Partial<StatRow> & { n: number }): StatRow => ({
   who_called: 'Leonard',
   reach_out_response: null,
   demo_outcome: null,
+  lead_type: 'target',
   ...r,
 })
 

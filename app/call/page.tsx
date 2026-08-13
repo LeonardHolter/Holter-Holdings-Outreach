@@ -1,12 +1,12 @@
 export const dynamic = 'force-dynamic'
 
-import { query, PRIORITY_ORDER_BY } from '@/lib/db'
+import { query, PRIORITY_ORDER_BY, QUEUE_TERMINAL_SQL } from '@/lib/db'
 import { CallingSession } from '@/components/CallingSession'
 import { TelnyxDialPanel } from '@/components/TelnyxDialPanel'
 import { CallingHoursGate } from '@/components/CallingHoursGate'
 import { PaceBanner } from '@/components/PaceBanner'
 import { Nav } from '@/components/Nav'
-import type { Company } from '@/types'
+import { isTerminalLead, type Company } from '@/types'
 
 async function fetchQueue(): Promise<Company[]> {
   
@@ -25,10 +25,13 @@ async function fetchQueue(): Promise<Company[]> {
       [today]
     ),
     query(
+      // 'Not interested' is absent from the terminal set on purpose — see
+      // QUEUE_TERMINAL_SQL. A target that said no comes back on the date its
+      // exit horizon implies, which is where the deals actually come from.
       `SELECT * FROM companies
        WHERE reach_out_response IS NOT NULL
          AND reach_out_response != 'Not called'
-         AND reach_out_response NOT IN ('Not interested', 'Demo booked', 'Wrong number', 'Not needed')
+         AND NOT ${QUEUE_TERMINAL_SQL}
          AND (next_reach_out <= $1 OR next_reach_out IS NULL)
        ORDER BY next_reach_out ASC NULLS FIRST
        LIMIT 2000`,
@@ -66,20 +69,13 @@ async function fetchByPhone(phone: string): Promise<Company | null> {
 export default async function CallPage({ searchParams }: { searchParams: Promise<{ dial?: string }> }) {
   const [queue, params] = await Promise.all([fetchQueue(), searchParams])
 
-  const TERMINAL_STATUSES = new Set([
-    'Not interested',
-    'Demo booked',
-    'Wrong number',
-    'Not needed',
-  ])
-
   let finalQueue = queue
   if (params.dial) {
     const normalized = params.dial.replace(/\D/g, '')
     const alreadyInQueue = queue.some(c => c.phone_number?.replace(/\D/g, '') === normalized)
     if (!alreadyInQueue) {
       const target = await fetchByPhone(params.dial)
-      if (target && !TERMINAL_STATUSES.has(target.reach_out_response ?? '')) {
+      if (target && !isTerminalLead(target)) {
         finalQueue = [target, ...queue]
       }
     }

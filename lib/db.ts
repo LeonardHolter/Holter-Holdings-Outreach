@@ -21,6 +21,37 @@ export async function query(text: string, params?: unknown[]): Promise<any[]> {
 }
 
 /**
+ * A lead is TERMINAL when it must never come back into the call queue.
+ *
+ * Deliberately short. In a proprietary acquisition search the modal answer
+ * from a good target is "not right now", and three years later that is the
+ * deal — so 'Not interested' is NOT terminal any more. It reschedules on the
+ * exit horizon instead. Burning it was the single most expensive rule in the
+ * queue: it threw away the leads the search exists to find.
+ *
+ * What genuinely closes a file:
+ *  - Wrong number / Not needed / Not a fit — bad record or wrong profile.
+ *  - exit_horizon 'never' | 'sold' — the owner answered the only question
+ *    that matters, and the answer ends it.
+ *  - 'Demo booked' on a TARGET — it is in an active process on /demos, and
+ *    re-dialling from the cold queue would cut across that. Intermediaries
+ *    keep recurring: a booked intro with an accountant starts the
+ *    relationship, it does not end it.
+ *
+ * Every column is COALESCEd before comparison, and that is load-bearing, not
+ * defensive habit. `exit_horizon IN ('never','sold')` evaluates to NULL — not
+ * false — on the rows where exit_horizon IS NULL, which is most of them. That
+ * NULL propagates through the OR, and `NOT NULL` is NULL rather than true, so
+ * an un-COALESCEd version of this predicate silently empties the entire call
+ * queue.
+ */
+export const QUEUE_TERMINAL_SQL = `(
+  COALESCE(reach_out_response, '') IN ('Wrong number', 'Not needed', 'Not a fit')
+  OR COALESCE(exit_horizon, '') IN ('never', 'sold')
+  OR (COALESCE(reach_out_response, '') = 'Demo booked' AND COALESCE(lead_type, 'target') <> 'intermediary')
+)`
+
+/**
  * Lead-priority ordering based on driftsinntekter (revenue, stored in
  * thousands NOK). Highest priority first:
  *   1. 20–50 MNOK     — the sweet spot (decided 2026-08-06), called first

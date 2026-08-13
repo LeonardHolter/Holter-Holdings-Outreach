@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
 import type { Company, CompanyNote } from '@/types'
-import { RESPONSE_STATUSES, TEAM_MEMBERS, REGIONS } from '@/types'
+import { responseStatusesFor, EXIT_HORIZONS, INTERMEDIARY_TOUCH_DAYS, TEAM_MEMBERS, REGIONS } from '@/types'
 
 interface Props {
   initialQueue: Company[]
@@ -112,18 +112,37 @@ function sortQueueByCallback(q: Company[]): Company[] {
   })
 }
 
-function nextRescheduleDate(googleReviews: number | null, callCount: number): string {
-  const highValue = (googleReviews ?? 0) >= 500
+const addDays = (days: number): string =>
+  format(new Date(Date.now() + days * 86400000), 'yyyy-MM-dd')
+
+/**
+ * When to bring this lead back.
+ *
+ * The exit horizon wins whenever we have one: an owner who said "3–5 years"
+ * should be left alone for months, and one who said "now" should be called
+ * back inside a fortnight — neither has anything to do with how many Google
+ * reviews the shop has. Review count only survives as the fallback for
+ * targets we have not yet asked, where it is a rough proxy for how much the
+ * business is worth chasing.
+ *
+ * Returns null for a terminal horizon ('never' | 'sold') — nothing to schedule.
+ */
+function nextRescheduleDate(
+  company: Pick<Company, 'google_reviews' | 'lead_type'>,
+  callCount: number,
+  exitHorizon: string,
+): string | null {
+  if (company.lead_type === 'intermediary') return addDays(INTERMEDIARY_TOUCH_DAYS)
+
+  const horizon = EXIT_HORIZONS.find(h => h.value === exitHorizon)
+  if (horizon) return horizon.days == null ? null : addDays(horizon.days)
+
+  const highValue = (company.google_reviews ?? 0) >= 500
   const calls = Math.max(callCount, 1)
-  let days: number
-  if (highValue) {
-    days = calls <= 1 ? 7 : calls <= 2 ? 10 : 14
-  } else {
-    days = calls <= 2 ? 14 : 21
-  }
-  const d = new Date()
-  d.setDate(d.getDate() + days)
-  return format(d, 'yyyy-MM-dd')
+  const days = highValue
+    ? (calls <= 1 ? 7 : calls <= 2 ? 10 : 14)
+    : (calls <= 2 ? 14 : 21)
+  return addDays(days)
 }
 
 // Revenue is stored in thousands NOK (driftsinntekter). 20–50 MNOK is the
@@ -314,6 +333,7 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
 
   // Editable fields
   const [response, setResponse] = useState('')
+  const [exitHorizon, setExitHorizon] = useState('')
   const [reachedDM, setReachedDM] = useState(false)
   const [notes, setNotes] = useState('')
   const [ownersName, setOwnersName] = useState('')
@@ -405,6 +425,7 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
 
   const loadCompany = useCallback((c: Company) => {
     setResponse(c.reach_out_response ?? '')
+    setExitHorizon(c.exit_horizon ?? '')
     setReachedDM(!!c.reached_decision_maker)
     setNotes(c.notes ?? '')
     setOriginalNotes(c.notes ?? '')
@@ -632,12 +653,13 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
         payload.who_called = sessionCaller || null
         payload.last_reach_out = todayStr()
         payload.reached_decision_maker = reachedDM
+        payload.exit_horizon = exitHorizon || null
         const newCallCount = (company.amount_of_calls ?? 0) + 1
-        // "No answer" always comes back in exactly a week; other outcomes use
-        // the value-based reschedule (unless a manual callback date is set).
+        // "No answer" always comes back in exactly a week — that is about
+        // reaching them, not about their horizon, so it ignores it.
         const autoReschedule = response === 'No answer'
-          ? format(new Date(Date.now() + 7 * 86400000), 'yyyy-MM-dd')
-          : nextRescheduleDate(company.google_reviews, newCallCount)
+          ? addDays(7)
+          : nextRescheduleDate(company, newCallCount, exitHorizon)
         // Only a FUTURE callback date is honored. The field is prefilled with
         // the company's current date, so when a due callback is re-logged
         // untouched, that stale (today/past) date used to be written back —
@@ -896,12 +918,21 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
             {/* Why this lead: industry, revenue fit, region, call history — at
                 a glance. Industry first: it decides which pitch you run. */}
             <div className="mt-3 flex items-center gap-2 flex-wrap font-mono text-[11px] uppercase tracking-wider">
+              {/* Which funnel you are in decides the whole conversation, so it
+                  leads — an accountant is a referral relationship, not a target. */}
+              {company?.lead_type === 'intermediary' && (
+                <span className="inline-flex items-center px-2 py-1 rounded border border-white bg-white text-black font-bold">
+                  Intermediary
+                </span>
+              )}
               {company?.industry && (
                 <span className="inline-flex items-center px-2 py-1 rounded border border-gray-500 text-gray-200 font-bold">
                   {company.industry}
                 </span>
               )}
-              {(() => {
+              {/* Revenue fit is a target question — an accountant's own
+                  turnover says nothing about the deals it can refer. */}
+              {company?.lead_type !== 'intermediary' && (() => {
                 const fit = fitBadge(company?.revenue ?? null)
                 const rev = fmtRevenue(company?.revenue ?? null)
                 return (
@@ -912,6 +943,11 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
                   </span>
                 )
               })()}
+              {company?.exit_horizon && (
+                <span className="inline-flex items-center px-2 py-1 rounded border border-gray-700 text-gray-400">
+                  Exit · {EXIT_HORIZONS.find(h => h.value === company.exit_horizon)?.label ?? company.exit_horizon}
+                </span>
+              )}
               {company?.state && (
                 <span className="inline-flex items-center px-2 py-1 rounded border border-gray-700 text-gray-400">
                   {company.state}
@@ -1175,9 +1211,37 @@ export function CallingSession({ initialQueue, dialNumber }: Props) {
               <span className="font-mono text-[11px] uppercase tracking-wider">Reached decision-maker</span>
             </button>
 
+            {company.lead_type !== 'intermediary' && (
+              <Field label="Exit Horizon">
+                <div className="grid grid-cols-3 gap-2 mt-1">
+                  {EXIT_HORIZONS.map(h => (
+                    <button
+                      key={h.value}
+                      type="button"
+                      onClick={() => setExitHorizon(exitHorizon === h.value ? '' : h.value)}
+                      title={
+                        h.days == null
+                          ? 'Closes the file — this lead leaves the queue for good'
+                          : `Comes back in ~${h.days} days`
+                      }
+                      className={`px-2 py-2.5 rounded-lg border text-xs transition-colors touch-manipulation ${
+                        exitHorizon === h.value
+                          ? 'border-white bg-white text-black font-semibold'
+                          : 'border-gray-700 bg-gray-950 text-gray-400 hover:border-gray-500 hover:text-gray-200'
+                      }`}
+                    >{h.label}</button>
+                  ))}
+                </div>
+                <p className="text-[10px] text-gray-600 mt-1.5">
+                  &quot;If you did step back one day — is that a 2-year thing or a 10-year thing?&quot;
+                  Sets when this lead comes back.
+                </p>
+              </Field>
+            )}
+
             <Field label="Call Outcome">
               <div className="grid grid-cols-2 gap-2 mt-1">
-                {RESPONSE_STATUSES.map(r => (
+                {responseStatusesFor(company.lead_type).map(r => (
                   <button key={r} onClick={() => { setResponse(r); if (recordingRef.current) stopRecording() }}
                     className={`text-left px-3 py-3 rounded-lg border text-sm transition-colors touch-manipulation ${
                       response === r

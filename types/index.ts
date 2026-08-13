@@ -23,6 +23,10 @@ export interface Company {
   reached_decision_maker: boolean | null
   demo_outcome: string | null
   industry: string | null // 'Bilverksted' | 'Rørlegger' | … (set by importers)
+  /** 'target' (a business we might buy) | 'intermediary' (accountant/adviser). */
+  lead_type: string | null
+  /** 'now' | '<1y' | '1-3y' | '3-5y' | 'never' | 'sold' — drives the requeue date. */
+  exit_horizon: string | null
   calls_leonard: number
   calls_william: number
   total_dialed: number
@@ -90,7 +94,10 @@ export const REGIONS = [
   'Gjøvik',
 ]
 
-export const RESPONSE_STATUSES = [
+export type LeadType = 'target' | 'intermediary'
+
+/** Outcomes for a TARGET — a business we might buy. */
+export const TARGET_RESPONSE_STATUSES = [
   'Demo booked',
   'Not interested',
   'No answer',
@@ -99,6 +106,66 @@ export const RESPONSE_STATUSES = [
   'Wrong number',
   'Not needed',
 ]
+
+/**
+ * Outcomes for an INTERMEDIARY — an accountant or adviser who refers deals.
+ * A different funnel: there is no sale to close, so there is no "Not
+ * interested" that ends the relationship. "Intro booked" is the START of one,
+ * and the firm keeps recurring on a ~90-day touch until it says "Not a fit".
+ */
+export const INTERMEDIARY_RESPONSE_STATUSES = [
+  'Intro booked',
+  'Will refer',
+  'Has client now',
+  'No answer',
+  'Call back later',
+  'Email sendt',
+  'Wrong number',
+  'Not a fit',
+]
+
+export function responseStatusesFor(leadType: string | null | undefined): string[] {
+  return leadType === 'intermediary' ? INTERMEDIARY_RESPONSE_STATUSES : TARGET_RESPONSE_STATUSES
+}
+
+/** Union, for the pipeline filters and inline editors that span both funnels. */
+export const RESPONSE_STATUSES = [
+  ...TARGET_RESPONSE_STATUSES,
+  ...INTERMEDIARY_RESPONSE_STATUSES.filter(s => !TARGET_RESPONSE_STATUSES.includes(s)),
+]
+
+/**
+ * How soon the owner would consider stepping back. `value` is what is stored;
+ * `days` is how far out to requeue the lead — the whole point of capturing
+ * it. null days = terminal, the file is closed.
+ */
+export const EXIT_HORIZONS: { value: string; label: string; days: number | null }[] = [
+  { value: 'now', label: 'Now', days: 14 },
+  { value: '<1y', label: '< 1 yr', days: 30 },
+  { value: '1-3y', label: '1–3 yr', days: 120 },
+  { value: '3-5y', label: '3–5 yr', days: 240 },
+  { value: 'never', label: 'Never', days: null },
+  { value: 'sold', label: 'Just sold', days: null },
+]
+
+/** Intermediaries are a standing relationship, not a conversion — ~quarterly. */
+export const INTERMEDIARY_TOUCH_DAYS = 90
+
+/**
+ * Does this lead never come back into the call queue? Mirrors
+ * QUEUE_TERMINAL_SQL in lib/db.ts — keep the two in sync.
+ *
+ * Note what is NOT here: 'Not interested'. A target that said no today is
+ * requeued on its exit horizon, because that is where a proprietary search
+ * finds its deals.
+ */
+export function isTerminalLead(
+  c: Pick<Company, 'reach_out_response' | 'exit_horizon' | 'lead_type'>
+): boolean {
+  if (['Wrong number', 'Not needed', 'Not a fit'].includes(c.reach_out_response ?? '')) return true
+  if (['never', 'sold'].includes(c.exit_horizon ?? '')) return true
+  return c.reach_out_response === 'Demo booked' && c.lead_type !== 'intermediary'
+}
 
 export const TEAM_MEMBERS = [
   'Leonard',

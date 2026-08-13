@@ -12,6 +12,8 @@ export interface StatRow {
   who_called: string | null
   reach_out_response: string | null
   demo_outcome: string | null
+  /** 'target' | 'intermediary' — the two funnels are reported separately. */
+  lead_type: string
   n: number
 }
 
@@ -54,11 +56,12 @@ async function fetchStatRows(): Promise<StatRow[]> {
       e.caller_name AS who_called,
       e.response AS reach_out_response,
       CASE WHEN e.response = 'Demo booked' THEN c.demo_outcome END AS demo_outcome,
+      COALESCE(c.lead_type, 'target') AS lead_type,
       COUNT(*)::int AS n
     FROM call_events e
     LEFT JOIN companies c ON c.id = e.company_id
     WHERE e.created_at >= NOW() - INTERVAL '364 days'
-    GROUP BY 1, 2, 3, 4
+    GROUP BY 1, 2, 3, 4, 5
   `)
 
   // Calls logged before the event ledger existed only live in companies'
@@ -73,12 +76,13 @@ async function fetchStatRows(): Promise<StatRow[]> {
       who_called,
       reach_out_response,
       demo_outcome,
+      COALESCE(lead_type, 'target') AS lead_type,
       COUNT(*)::int AS n
     FROM companies
     WHERE last_reach_out IS NOT NULL
       AND last_reach_out >= CURRENT_DATE - INTERVAL '364 days'
       AND ($1::date IS NULL OR last_reach_out < $1::date)
-    GROUP BY 1, 2, 3, 4`,
+    GROUP BY 1, 2, 3, 4, 5`,
     [firstEventDay]
   )
 
@@ -87,6 +91,7 @@ async function fetchStatRows(): Promise<StatRow[]> {
     who_called: r.who_called,
     reach_out_response: r.reach_out_response,
     demo_outcome: r.demo_outcome,
+    lead_type: r.lead_type ?? 'target',
     n: Number(r.n),
   }))
 }

@@ -137,8 +137,12 @@ export function aggregate(rows: StatRow[]): Metrics {
   const sum = (pred: (r: StatRow) => boolean) => rows.filter(pred).reduce((s, r) => s + r.n, 0)
   const calls = rows.reduce((s, r) => s + r.n, 0)
   const noAnswer = sum(r => r.reach_out_response === 'No answer')
-  const demos = sum(r => r.reach_out_response === 'Demo booked')
-  const notInterested = sum(r => r.reach_out_response === 'Not interested')
+  // Each funnel has its own word for the same shape of outcome: a target
+  // books a demo, an accountant books an intro; a target is "not interested",
+  // an accountant is "not a fit". Counting both keeps these columns meaningful
+  // whichever funnel the Breakdown is scoped to.
+  const demos = sum(r => r.reach_out_response === 'Demo booked' || r.reach_out_response === 'Intro booked')
+  const notInterested = sum(r => r.reach_out_response === 'Not interested' || r.reach_out_response === 'Not a fit')
   const callback = sum(r => r.reach_out_response === 'Call back later')
   const wrong = sum(r => r.reach_out_response === 'Wrong number')
   const notNeeded = sum(r => r.reach_out_response === 'Not needed')
@@ -335,6 +339,8 @@ function cellBackground(d?: { leonard: number; william: number; total: number })
 }
 
 type Period = 'today' | 'week' | 'all'
+/** Which funnel the Breakdown reports on. */
+type Scope = 'target' | 'intermediary' | 'all'
 
 interface Props {
   rows: StatRow[]
@@ -350,6 +356,9 @@ export function DailyStats({ rows, events, demoOutcomes, industryWins = [], call
   // quiet morning a 'today' default shows an empty table that reads like the
   // data is broken.
   const [period, setPeriod] = useState<Period>('all')
+  // Targets by default: the acquisition search is the point, and intermediaries
+  // are the smaller, differently-shaped supporting funnel.
+  const [scope, setScope] = useState<Scope>('target')
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
   const [notesState, setNotesState] = useState<{ day: string; company: DayNote[]; dayNotes: DayNote[] } | null>(null)
   const [noteDraft, setNoteDraft] = useState('')
@@ -438,7 +447,12 @@ export function DailyStats({ rows, events, demoOutcomes, industryWins = [], call
   const inPeriod = (date: string) =>
     period === 'all' ? true : period === 'today' ? date === today : date >= weekAgo
 
-  const periodRows = rows.filter(r => inPeriod(r.date))
+  // Targets and intermediaries are different funnels with different base
+  // rates — an accountant booking an intro and an owner booking a demo are
+  // not the same event, so averaging them makes every rate below
+  // uninterpretable. The Breakdown reports one funnel at a time.
+  const scopeRows = scope === 'all' ? rows : rows.filter(r => r.lead_type === scope)
+  const periodRows = scopeRows.filter(r => inPeriod(r.date))
   const metricsFor = (caller: string) =>
     aggregate(caller === 'Team' ? periodRows : periodRows.filter(r => r.who_called === caller))
 
@@ -459,14 +473,21 @@ export function DailyStats({ rows, events, demoOutcomes, industryWins = [], call
 
   // Every Won % on this page — both tables and the KPI — reads from this one
   // map, so they can never disagree again.
-  const wonAllTime = useMemo(() => wonRatesByCaller(rows, callerWins), [rows, callerWins])
-  // All-time call/answered counts per caller, from the same `rows` the
-  // Breakdown and the win rates use — so Sales Performance can't quote a dial
-  // count that disagrees with the answered count sitting next to it.
+  // Targets only, on BOTH sides: winsByCaller counts no intermediary wins, so
+  // letting accountant conversations into the denominator would deflate the
+  // rate with calls that could never have produced the numerator.
+  const wonAllTime = useMemo(
+    () => wonRatesByCaller(rows.filter(r => r.lead_type !== 'intermediary'), callerWins),
+    [rows, callerWins]
+  )
+  // All-time TARGET call counts per caller, feeding Sales Performance. Same
+  // `rows` source and same target-only scope as the win rates beside them, so
+  // the table can't quote a call count that disagrees with its own denominator.
   const allTime = useMemo(() => {
+    const targetRows = rows.filter(r => r.lead_type !== 'intermediary')
     const m = new Map<string, Metrics>()
-    for (const c of CALLERS) m.set(c, aggregate(rows.filter(r => r.who_called === c)))
-    m.set('Team', aggregate(rows))
+    for (const c of CALLERS) m.set(c, aggregate(targetRows.filter(r => r.who_called === c)))
+    m.set('Team', aggregate(targetRows))
     return m
   }, [rows])
   const allTimeFor = (caller: string) => allTime.get(caller) ?? aggregate([])
@@ -613,16 +634,37 @@ export function DailyStats({ rows, events, demoOutcomes, industryWins = [], call
       {/* Per-person breakdown with period tabs */}
       <div className="bg-gray-900 rounded-xl p-5">
         <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Breakdown</h2>
-          <div className="flex bg-gray-800 rounded-lg p-0.5 text-xs">
-            {([['today', 'Today'], ['week', 'This week'], ['all', 'All time']] as [Period, string][]).map(([p, label]) => (
-              <button key={p} onClick={() => setPeriod(p)}
-                className={`px-3 py-1.5 rounded-md transition-colors ${period === p ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-gray-200'}`}>
-                {label}
-              </button>
-            ))}
+          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">
+            Breakdown
+            <Info text="Targets are businesses you might buy; intermediaries are accountants and advisers who refer deals. They convert at completely different rates, so mixing them would make every number in this table meaningless — pick one funnel at a time." />
+          </h2>
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex bg-gray-800 rounded-lg p-0.5 text-xs">
+              {([['target', 'Targets'], ['intermediary', 'Accountants'], ['all', 'Both']] as [Scope, string][]).map(([s, label]) => (
+                <button key={s} onClick={() => setScope(s)}
+                  className={`px-3 py-1.5 rounded-md transition-colors ${scope === s ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-gray-200'}`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="flex bg-gray-800 rounded-lg p-0.5 text-xs">
+              {([['today', 'Today'], ['week', 'This week'], ['all', 'All time']] as [Period, string][]).map(([p, label]) => (
+                <button key={p} onClick={() => setPeriod(p)}
+                  className={`px-3 py-1.5 rounded-md transition-colors ${period === p ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-gray-200'}`}>
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
+
+        {scope === 'intermediary' && (
+          <p className="text-[11px] text-gray-500 mb-3">
+            Referral partners. Demo&nbsp;% counts booked intros and Won&nbsp;% is blank by
+            design — an accountant has no deal of its own to win. What matters here is
+            how many firms you are still in front of.
+          </p>
+        )}
 
         <div className="overflow-x-auto">
           <table className="w-full text-sm min-w-[640px]">
@@ -633,7 +675,7 @@ export function DailyStats({ rows, events, demoOutcomes, industryWins = [], call
                 <th className="text-right font-semibold py-2 px-3">Pickup&nbsp;%<Info text="Answered ÷ calls. The only rate here measured against every dial — it is the metric that asks whether anyone picked up. Bracketed number is the answered count." /></th>
                 <th className="text-right font-semibold py-2 px-3">Demos<Info text="Calls whose outcome was “Demo booked” in the period." /></th>
                 <th className="text-right font-semibold py-2 px-3">Demo&nbsp;%<Info text="Demos ÷ ANSWERED calls. Divided by answered, not total dials: an unanswered phone cannot book a demo, so including it would only dilute the rate by your pickup rate." /></th>
-                <th className="text-right font-semibold py-2 px-3">Won&nbsp;%&nbsp;(all)<Info text="Deals won ÷ ANSWERED calls, ALL TIME — the only column here that ignores the period tabs. A deal closes weeks after the call that sourced it, so pinning wins to a day would credit the wrong one. Identical to the Sales Performance table below: same wins, same denominator." /></th>
+                <th className="text-right font-semibold py-2 px-3">Won&nbsp;%&nbsp;(all)<Info text="Deals won ÷ ANSWERED TARGET calls, ALL TIME — the only column here that ignores the period tabs. A deal closes weeks after the call that sourced it, so pinning wins to a day would credit the wrong one. Blank under Accountants: an intermediary has no deal of its own to win. Identical to the Sales Performance table below: same wins, same denominator." /></th>
                 <th className="text-right font-semibold py-2 px-3">No&nbsp;answer<Info text="Calls whose outcome was “No answer” — nobody picked up." /></th>
                 <th className="text-right font-semibold py-2 px-3">Not&nbsp;int.<Info text="Calls whose outcome was “Not interested”." /></th>
                 <th className="text-right font-semibold py-2 px-3">Not&nbsp;int.&nbsp;%<Info text="Not interested ÷ ANSWERED calls. Only someone who picked up can decline, so dials that never connected are excluded." /></th>
@@ -656,7 +698,7 @@ export function DailyStats({ rows, events, demoOutcomes, industryWins = [], call
                     <td className="text-right tabular-nums text-gray-300 py-2.5 px-3">{m.calls ? pctOf(m.pickupRate, m.answered) : '—'}</td>
                     <td className="text-right tabular-nums text-green-400 py-2.5 px-3">{m.demos}</td>
                     <td className="text-right tabular-nums text-gray-300 py-2.5 px-3">{m.answered ? pctFrac(m.demoRate, m.demos, m.answered) : '—'}</td>
-                    <td className="text-right tabular-nums text-green-400 py-2.5 px-3">{w.rate != null ? pctFrac(w.rate, w.won, w.answered) : '—'}</td>
+                    <td className="text-right tabular-nums text-green-400 py-2.5 px-3">{scope !== 'intermediary' && w.rate != null ? pctFrac(w.rate, w.won, w.answered) : '—'}</td>
                     <td className="text-right tabular-nums text-gray-500 py-2.5 px-3">{m.noAnswer}</td>
                     <td className="text-right tabular-nums text-gray-500 py-2.5 px-3">{m.notInterested}</td>
                     <td className="text-right tabular-nums text-red-400/80 py-2.5 px-3">{m.answered ? pctFrac0(m.notInterestedRate, m.notInterested, m.answered) : '—'}</td>
@@ -674,7 +716,7 @@ export function DailyStats({ rows, events, demoOutcomes, industryWins = [], call
                     <td className="text-right tabular-nums text-gray-200 py-2.5 px-3">{m.calls ? pctOf(m.pickupRate, m.answered) : '—'}</td>
                     <td className="text-right tabular-nums text-green-400 py-2.5 px-3">{m.demos}</td>
                     <td className="text-right tabular-nums text-gray-200 py-2.5 px-3">{m.answered ? pctFrac(m.demoRate, m.demos, m.answered) : '—'}</td>
-                    <td className="text-right tabular-nums text-green-300 py-2.5 px-3">{w.rate != null ? pctFrac(w.rate, w.won, w.answered) : '—'}</td>
+                    <td className="text-right tabular-nums text-green-300 py-2.5 px-3">{scope !== 'intermediary' && w.rate != null ? pctFrac(w.rate, w.won, w.answered) : '—'}</td>
                     <td className="text-right tabular-nums text-gray-500 py-2.5 px-3">{m.noAnswer}</td>
                     <td className="text-right tabular-nums text-gray-500 py-2.5 px-3">{m.notInterested}</td>
                     <td className="text-right tabular-nums text-red-400/80 py-2.5 px-3">{m.answered ? pctFrac0(m.notInterestedRate, m.notInterested, m.answered) : '—'}</td>
@@ -691,7 +733,7 @@ export function DailyStats({ rows, events, demoOutcomes, industryWins = [], call
       <div className="bg-gray-900 rounded-xl p-5">
         <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
           <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Sales Performance</h2>
-          <span className="text-[10px] text-gray-600">All time</span>
+          <span className="text-[10px] text-gray-600">Targets · all time</span>
         </div>
         {allTimeFor('Team').calls === 0 ? (
           <p className="text-xs text-gray-600">No logged calls yet — these numbers start filling in as you use the dialer.</p>

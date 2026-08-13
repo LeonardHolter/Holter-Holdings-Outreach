@@ -31,12 +31,21 @@ CREATE TABLE companies (
   reached_decision_maker BOOLEAN, -- did the last call reach the owner/daglig leder?
   demo_outcome TEXT,      -- 'Held' | 'No-show' | 'Won' | 'Lost' (set after the demo happens)
   industry TEXT,          -- 'Bilverksted' | 'Rørlegger' | … (set by importers; backfill: scripts/migrate-add-industry.mjs)
+  -- Which funnel this lead belongs to. Targets are businesses we might buy;
+  -- intermediaries are accountants/advisers who refer deals. Different base
+  -- rates, so /stats reports them separately. Backfill: scripts/migrate-add-lead-type.mjs
+  lead_type TEXT NOT NULL DEFAULT 'target',  -- 'target' | 'intermediary'
+  -- When the owner would consider stepping back. Drives the requeue date:
+  -- "not right now" is the answer a proprietary search is mining for, so a
+  -- dated horizon keeps the lead alive instead of burning it.
+  exit_horizon TEXT,      -- 'now' | '<1y' | '1-3y' | '3-5y' | 'never' | 'sold'
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- org_nr is the natural dedup key for scraped companies.
 CREATE UNIQUE INDEX IF NOT EXISTS companies_org_nr_uniq ON companies(org_nr) WHERE org_nr IS NOT NULL;
+CREATE INDEX IF NOT EXISTS companies_lead_type_idx ON companies (lead_type);
 
 CREATE TABLE company_notes (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
