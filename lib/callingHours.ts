@@ -1,9 +1,7 @@
-// Calling hours: no outbound calls after 16:00 Oslo time.
+// Calling hours: 16:00 Oslo time is the target end of the calling day.
 //
-// The cutoff is about the person answering, so it's pinned to Europe/Oslo
-// regardless of where the caller happens to sit. Enforced in two places: the
-// /call page UI (CallingHoursGate replaces the dialer) and the Telnyx call
-// API (a click-to-call request after hours is refused server-side).
+// Pinned to Europe/Oslo regardless of where the caller sits. It is no longer
+// enforced — PaceBanner only uses it to warn when the pace runs past it.
 
 export const CALL_CUTOFF_HOUR = 16
 
@@ -16,9 +14,4 @@ export function osloHour(now: Date = new Date()): number {
       hour12: false,
     }).format(now),
   )
-}
-
-/** True from 16:00 Oslo time until midnight — no calls in that window. */
-export function isCallingClosed(now: Date = new Date()): boolean {
-  return osloHour(now) >= CALL_CUTOFF_HOUR
 }
